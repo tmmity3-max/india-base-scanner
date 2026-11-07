@@ -33,9 +33,12 @@
     };
     window.ibsApplyTheme(s.theme);
     fill(s);
-    msg.textContent = window.ibsSaveSettings(s)
-      ? `Saved. Charts now draw the RS line against the ${window.IBS_BENCH_NAMES[s.rsBench]}.`
-      : "Couldn't save: this browser is blocking site storage.";
+    if (window.ibsSaveSettings(s)) {
+      msg.textContent = "Saved. Opening the dashboard…";
+      setTimeout(() => { location.href = "/"; }, 600);   // back to the dashboard with the new settings
+    } else {
+      msg.textContent = "Couldn't save: this browser is blocking site storage.";
+    }
   });
   document.getElementById("resetSettings").addEventListener("click", () => {
     fill(window.IBS_SETTING_DEFAULTS);
