@@ -100,11 +100,52 @@
     history.replaceState(null, "", "#" + p.toString());
   }
 
+  // ---------- RS line against the benchmark chosen in Settings ----------
+  const SETTINGS = window.ibsSettings ? window.ibsSettings() : { rsBench: "NIFTY500", rsMa: 50, rsHi: 250, showRsMa: true, showRsDots: true };
+  let BENCH = null;                    // { d: [...dates], c: [...closes] } for the chosen index
+  async function loadBenchmark() {
+    try {
+      const r = await fetch(`${DATA}benchmarks.json`);
+      if (!r.ok) throw new Error(r.status);
+      const all = await r.json();
+      const b = all[SETTINGS.rsBench] || all.NIFTY500 || all.NIFTY50;
+      if (b) BENCH = { map: new Map(b.d.map((d, i) => [d, b.c[i]])), name: (window.IBS_BENCH_NAMES || {})[all[SETTINGS.rsBench] ? SETTINGS.rsBench : "NIFTY500"] || "" };
+    } catch (e) { BENCH = null; }   // no benchmark file yet: charts use the scan's RS line
+  }
+  function withRS(c) {
+    if (!BENCH || c.rsv !== undefined) return c;
+    const n = c.c.length, rsv = new Array(n).fill(null);
+    let last = null;
+    for (let i = 0; i < n; i++) {
+      const b = BENCH.map.get(c.d[i]);
+      if (b) last = b;
+      if (last) rsv[i] = (c.c[i] / last) * 100;
+    }
+    if (rsv.filter((v) => v != null).length < 20) { c.rsv = null; return c; }
+    const L = SETTINGS.rsMa, H = SETTINGS.rsHi;
+    const rsma = new Array(n).fill(null), rshi = new Array(n).fill(false), rslead = new Array(n).fill(false);
+    let sum = 0, cnt = 0;
+    for (let i = 0; i < n; i++) {
+      if (rsv[i] != null) { sum += rsv[i]; cnt++; }
+      if (i >= L && rsv[i - L] != null) { sum -= rsv[i - L]; cnt--; }
+      if (i >= L - 1 && cnt === L) rsma[i] = sum / L;
+      if (i >= H - 1 && rsv[i] != null) {
+        let mx = -Infinity, pmx = -Infinity;
+        for (let j = i - H + 1; j <= i; j++) { if (rsv[j] != null) mx = Math.max(mx, rsv[j]); pmx = Math.max(pmx, c.c[j]); }
+        rshi[i] = rsv[i] >= mx;
+        rslead[i] = rshi[i] && c.c[i] < pmx;       // RS leads price: RS at a high, price isn't yet
+      }
+    }
+    Object.assign(c, { rsv, rsma, rshi, rslead, rsName: BENCH.name });
+    return c;
+  }
+
   async function loadChart(sym) {
     if (chartCache.has(sym)) return chartCache.get(sym);
     const v = state.data ? state.data.data_date : "";
     const p = fetch(`${DATA}charts/${encodeURIComponent(sym)}.json?v=${v}`)
-      .then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); });
+      .then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); })
+      .then(withRS);
     chartCache.set(sym, p);
     p.catch(() => chartCache.delete(sym));
     return p;
@@ -181,7 +222,7 @@
     axisW() { return this.mini ? 46 : 64; }
     plotW() { return this.cv.clientWidth - this.axisW(); }
     layout() {
-      const H = this.cv.clientHeight, hasRS = this.c && !!this.c.rs;
+      const H = this.cv.clientHeight, hasRS = this.c && !!(this.c.rsv || this.c.rs);
       const dateH = 16, gap = this.mini ? 6 : 10;
       const priceH = Math.round((H - dateH) * (hasRS ? 0.66 : 0.8));
       const volH = Math.round((H - dateH) * (hasRS ? 0.14 : 0.2)) - gap;
@@ -395,18 +436,34 @@
       if (!mini) ctx.fillText("Volume", axisX, vTop + 8);
 
       // RS line pane
+      // like the TradingView indicator: blue RS line, orange RS average,
+      // blue dots = RS at a new high, pink dots = RS at a new high before price
       if (hasRS) {
+        const rs = c.rsv || c.rs, ma = c.rsv && SETTINGS.showRsMa ? c.rsma : null;
         const rTop = vTop + volH + gap;
         let rlo = Infinity, rhi = -Infinity;
-        for (let i = i0; i <= i1; i++) { const v = c.rs[i]; if (v !== null) { rlo = Math.min(rlo, v); rhi = Math.max(rhi, v); } }
+        for (let i = i0; i <= i1; i++) {
+          for (const v of [rs[i], ma ? ma[i] : null]) if (v != null) { rlo = Math.min(rlo, v); rhi = Math.max(rhi, v); }
+        }
         if (rlo < Infinity) {
+          const pad = (rhi - rlo) * 0.08; rlo -= pad; rhi += pad;
           const RY = (v) => rTop + (rhi - v) / ((rhi - rlo) || 1) * rsH;
           ctx.strokeStyle = grid; ctx.lineWidth = 1;
           ctx.beginPath(); ctx.moveTo(0, rTop - gap / 2 + 0.5); ctx.lineTo(plotW, rTop - gap / 2 + 0.5); ctx.stroke();
           ctx.save(); ctx.beginPath(); ctx.rect(0, rTop - 2, plotW, rsH + 4); ctx.clip();
-          line(c.rs, css("--rs"), RY, mini ? 1 : 1.3);
+          if (ma) line(ma, css("--rs-ma"), RY, mini ? 1 : 1.2);
+          line(rs, css("--rs"), RY, mini ? 1.3 : 1.8);
+          if (c.rsv && SETTINGS.showRsDots) {
+            const rad = mini ? 1.8 : 2.6;
+            for (let i = i0; i <= i1; i++) {
+              if (!c.rshi[i] || rs[i] == null) continue;
+              ctx.fillStyle = c.rslead[i] ? css("--rs-lead") : css("--rs");
+              ctx.beginPath(); ctx.arc(X(i), RY(rs[i]), rad, 0, Math.PI * 2); ctx.fill();
+            }
+          }
           ctx.restore();
-          ctx.fillStyle = ink3; ctx.fillText(mini ? "RS" : "RS line", axisX, rTop + 8);
+          ctx.fillStyle = ink3;
+          ctx.fillText(mini ? "RS" : "RS line", axisX, rTop + 8);
         }
       }
 
@@ -510,9 +567,11 @@
     try {
       const bucket = Math.floor(Date.now() / 600000); // refresh at most every 10 minutes
       DATA = await window.ibsDataBase();
+      const benchReady = loadBenchmark();
       const r = await fetch(`${DATA}latest.json?v=${bucket}`, { cache: "no-cache" });
       if (!r.ok) throw new Error(r.status);
       state.data = await r.json();
+      await benchReady;
     } catch (e) {
       showNoData();
       return;
@@ -522,7 +581,7 @@
     const liquid = d.stocks_liquid != null
       ? `${nf0.format(d.stocks_liquid)} liquid stocks (price of ₹${d.min_price ?? 50} or more and average daily turnover of ₹${d.min_turnover_cr} crore or more) out of ${nf0.format(d.stocks_scanned)} ${pretty(d.universe) === "all NSE stocks" ? "NSE stocks" : "in the " + pretty(d.universe)} scanned. `
       : `${nf0.format(d.stocks_scanned)} stocks from the ${pretty(d.universe)} scanned. `;
-    $("meta").textContent = liquid + `RS line measured against the ${pretty(d.benchmark)}. Updated ${timeOf(d.generated_at)}.`;
+    $("meta").textContent = liquid + `RS line drawn against the ${BENCH ? BENCH.name : pretty(d.benchmark)} (change it in Settings). Updated ${timeOf(d.generated_at)}.`;
 
     renderScreens();
     setView(state.view, true);
@@ -746,7 +805,12 @@
     if (c.screens && c.screens.length) bits.push("In: " + c.screens.join(", "));
     $("chartSub").innerHTML = "";
     $("chartSub").append(bits.join(". ") + (bits.length ? ". " : ""), tvLink(sym));
-    $("rsLegend").hidden = !c.rs;
+    $("rsLegend").hidden = !(c.rsv || c.rs);
+    $("rsLegend").innerHTML = c.rsv
+      ? `<i class="k-rs"></i>RS line vs ${c.rsName}` + (SETTINGS.showRsMa ? ` <i class="k-rsma"></i>RS ${SETTINGS.rsMa}-day average` : "") +
+        (SETTINGS.showRsDots ? ` <i class="k-dot"></i>RS new high <i class="k-dot lead"></i>RS leads price` : "") +
+        ` <a href="settings.html">Change</a>`
+      : `<i class="k-rs"></i>RS line vs index`;
     const mc = (c.fund && c.fund.market_cap_cr) || row.market_cap_cr;
     $("chartMcap").innerHTML = mc != null ? `<span>Market cap</span><b>${mcapText(mc)}</b>` : "";
     renderFund(c, row);

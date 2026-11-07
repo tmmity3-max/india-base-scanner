@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Settings – India Base Scanner</title>
+  <meta name="description" content="Choose the index the RS line is drawn against, and how the RS line looks.">
+  <meta name="theme-color" content="#15233F">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2315233F'/%3E%3Cpath d='M6 22h6l3-9 3 5 3-7 5 11' fill='none' stroke='%23E39B2D' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Public+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="has-rail">
+  <div class="rail-wrap">
+  <nav class="rail" aria-label="Pages">
+    <a class="rail-btn" href="/" data-page="dashboard">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="8" height="10" rx="1.5"/><rect x="13" y="3" width="8" height="6" rx="1.5"/><rect x="13" y="11" width="8" height="10" rx="1.5"/><rect x="3" y="15" width="8" height="6" rx="1.5"/></svg>
+      <span>Dashboard</span>
+    </a>
+    <a class="rail-btn" href="heatmap.html" data-page="heatmap">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="11" height="11" rx="1"/><rect x="15" y="3" width="6" height="6" rx="1"/><rect x="15" y="10" width="6" height="4" rx="1"/><rect x="3" y="15" width="6" height="6" rx="1"/><rect x="10" y="15" width="11" height="6" rx="1"/></svg>
+      <span>Heatmap</span>
+    </a>
+    <a class="rail-btn" href="settings.html" data-page="settings" aria-current="page">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.8v2.4M12 18.8v2.4M4.6 4.6l1.7 1.7M17.7 17.7l1.7 1.7M2.8 12h2.4M18.8 12h2.4M4.6 19.4l1.7-1.7M17.7 6.3l1.7-1.7"/></svg>
+      <span>Settings</span>
+    </a>
+  </nav>
+  </div>
+
+  <header class="top">
+    <a class="brand" href="/" aria-label="India Base Scanner home">
+      <svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="7"/><path d="M6 22h6l3-9 3 5 3-7 5 11"/></svg>
+      <span>India Base Scanner</span>
+    </a>
+    <nav class="links">
+      <a href="https://github.com/tmmity3-max/india-base-scanner" target="_blank" rel="noopener">GitHub</a>
+    </nav>
+  </header>
+
+  <main>
+    <section class="intro">
+      <h1>Settings</h1>
+      <p class="meta">These settings are saved in this browser only.</p>
+    </section>
+
+    <form class="settings" id="settingsForm">
+      <fieldset>
+        <legend>RS line benchmark</legend>
+        <p class="hint-text">The RS line under each chart is the stock's price divided by this index. A rising line means the stock is doing better than the index.</p>
+        <div class="bench-grid" id="benchGrid">
+          <label><input type="radio" name="rsBench" value="NIFTY50"><span><b>NIFTY 50</b><small>Large caps</small></span></label>
+          <label><input type="radio" name="rsBench" value="NIFTY500"><span><b>NIFTY 500</b><small>The broad market</small></span></label>
+          <label><input type="radio" name="rsBench" value="MIDCAP150"><span><b>NIFTY Midcap 150</b><small>For mid caps</small></span></label>
+          <label><input type="radio" name="rsBench" value="SMALLCAP250"><span><b>NIFTY Smallcap 250</b><small>For small caps</small></span></label>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>RS line display</legend>
+        <div class="field-row">
+          <label class="num">RS moving average <input type="number" name="rsMa" min="5" max="200" step="1"> <span>days</span></label>
+          <label class="num">New-high lookback <input type="number" name="rsHi" min="20" max="400" step="1"> <span>days</span></label>
+        </div>
+        <label class="check"><input type="checkbox" name="showRsMa"> Show the RS moving average (orange)</label>
+        <label class="check"><input type="checkbox" name="showRsDots"> Mark RS new highs (blue dots) and RS leading price (pink dots)</label>
+      </fieldset>
+
+      <div class="settings-actions">
+        <button type="submit" class="btn-primary">Save settings</button>
+        <button type="button" class="btn-plain" id="resetSettings">Restore defaults</button>
+        <span class="saved" id="savedMsg" role="status"></span>
+      </div>
+    </form>
+  </main>
+
+  <footer class="foot">
+    <p>The RS rating (1–99) in the tables doesn't change with this setting: it ranks each stock's own 12-month performance against all liquid NSE stocks.</p>
+  </footer>
+
+  <script src="data-source.js"></script>
+  <script src="settings.js"></script>
+</body>
+</html>

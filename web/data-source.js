@@ -30,4 +30,17 @@
     }
   }
   window.ibsDataBase = () => (pending = pending || resolve());
+
+  // Viewer settings, kept in this browser only.
+  const SKEY = "ibs-settings";
+  const DEFAULTS = { rsBench: "NIFTY50", rsMa: 50, rsHi: 250, showRsMa: true, showRsDots: true };
+  window.IBS_BENCH_NAMES = { NIFTY50: "NIFTY 50", NIFTY500: "NIFTY 500", MIDCAP150: "NIFTY Midcap 150", SMALLCAP250: "NIFTY Smallcap 250" };
+  window.ibsSettings = () => {
+    try { return { ...DEFAULTS, ...(JSON.parse(localStorage.getItem(SKEY) || "{}")) }; }
+    catch (e) { return { ...DEFAULTS }; }
+  };
+  window.ibsSaveSettings = (s) => {
+    try { localStorage.setItem(SKEY, JSON.stringify(s)); return true; } catch (e) { return false; }
+  };
+  window.IBS_SETTING_DEFAULTS = DEFAULTS;
 })();

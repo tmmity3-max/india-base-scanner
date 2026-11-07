@@ -178,6 +178,30 @@ def index_returns(members: dict, data: dict, fund: dict) -> dict:
     return out
 
 
+RS_BENCHMARKS = {"NIFTY50": ["^NSEI"], "NIFTY500": ["^CRSLDX"],
+                 "MIDCAP150": INDEX_TICKERS["MIDCAP150"], "SMALLCAP250": INDEX_TICKERS["SMALLCAP250"]}
+
+
+def write_benchmarks(out_dir: str, bars: int = 800) -> dict:
+    """Daily closes of the indices the website can draw the RS line against."""
+    out = {}
+    for name, tickers in RS_BENCHMARKS.items():
+        for tk in tickers:
+            try:
+                s = ibs.download_benchmark(tk, period="5y")
+            except Exception:
+                s = None
+            if s is not None and len(s) > 260:
+                s = s.tail(bars)
+                out[name] = {"d": [d.strftime("%Y-%m-%d") for d in s.index], "c": _series(s)}
+                break
+        if name not in out:
+            print("RS benchmark unavailable:", name)
+    with open(os.path.join(out_dir, "benchmarks.json"), "w") as fh:
+        json.dump(out, fh, separators=(",", ":"))
+    return out
+
+
 def write_heatmap(data: dict, fund: dict, out_dir: str, members: dict) -> dict:
     """Index heatmaps: % change over 1 day to 3 months, sized by market cap, plus index returns."""
     def chg(c, k):
@@ -260,6 +284,7 @@ def main():
 
     latest = write_site_data(result, data, args.out, args.universe, args.benchmark, fund)
     write_heatmap(data, fund, args.out, members)
+    write_benchmarks(args.out)
     print(f"Scan for {latest['data_date']}:")
     print(result.summary().to_string(index=False))
 

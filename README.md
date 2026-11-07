@@ -25,7 +25,7 @@ Every threshold is a **dial** in the notebook form. Change it, re-run, and the r
 ### Extras
 - **All NSE stocks** with a liquidity filter: price ≥ ₹50 and average daily turnover ≥ ₹1 crore
 - **RS rating (1-99)** ranked against the liquid stocks you scan
-- **RS line vs NIFTY 50 or NIFTY 500** (switchable), with a "new 52-week high" flag
+- **RS line like TradingView**: blue RS line, orange 50-day RS average, blue dots at RS new highs and pink dots when RS leads price. Pick the benchmark (NIFTY 50, NIFTY 500, Midcap 150 or Smallcap 250) on the website's Settings page
 - **Charts**: candles, 50/150/200 SMAs, pivot lines, volume and the RS line
 - **Market cap and fundamentals** (P/E, P/B, ROE, debt/equity, margins, growth, dividend yield) from Yahoo Finance, plus distance from the 52-week high and low
 - **Excel export**: one sheet per screen, plus your settings and every metric

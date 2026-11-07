@@ -14,7 +14,9 @@
   --sma50: #2F6FD6;
   --sma150: #D9822B;
   --sma200: #7A4FB5;
-  --rs: #4A5874;
+  --rs: #2962FF;
+  --rs-ma: #F57C00;
+  --rs-lead: #E040FB;
   --row-hover: #EEF2F7;
   --focus: #2F6FD6;
   --display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
@@ -38,7 +40,9 @@
     --sma50: #6FA0F0;
     --sma150: #F0A050;
     --sma200: #B18BE6;
-    --rs: #B3BED2;
+    --rs: #5B8CFF;
+    --rs-ma: #FFA726;
+    --rs-lead: #EA80FC;
     --row-hover: #1C2A47;
     color-scheme: dark;
   }
@@ -333,3 +337,33 @@ canvas.mini { width: 100%; height: 340px; display: block; touch-action: pan-y; c
   .rail-btn[aria-current="page"]::before { left: 20px; right: 20px; top: -1px; bottom: auto; width: auto; height: 3px; border-radius: 0 0 3px 3px; }
   body.has-rail { padding-bottom: 62px; }
 }
+
+.legend .k-rsma { border-color: var(--rs-ma); }
+.legend .k-dot { width: 8px; height: 8px; border: 0; border-radius: 50%; background: var(--rs); vertical-align: middle; margin: 0 4px 0 8px; }
+.legend .k-dot.lead { background: var(--rs-lead); }
+.legend a { margin-left: 8px; color: var(--ink-2); }
+
+/* Settings page */
+.settings { max-width: 860px; margin-top: 18px; }
+.settings fieldset { border: 1px solid var(--grid); border-radius: 10px; background: var(--surface); padding: 16px 20px 18px; margin: 0 0 16px; }
+.settings legend { font: 700 17px/1.2 var(--display); padding: 0 6px; }
+.hint-text { margin: 2px 0 12px; color: var(--ink-2); font-size: 14px; max-width: 70ch; }
+.bench-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.bench-grid label { cursor: pointer; }
+.bench-grid input { position: absolute; opacity: 0; pointer-events: none; }
+.bench-grid span { display: block; border: 1px solid var(--grid); border-radius: 9px; padding: 12px 14px; background: var(--paper); }
+.bench-grid b { display: block; font: 700 15px/1.2 var(--display); }
+.bench-grid small { color: var(--ink-3); font-size: 12.5px; }
+.bench-grid input:checked + span { border-color: var(--saffron); box-shadow: inset 0 0 0 1px var(--saffron); background: var(--saffron-wash); }
+.bench-grid input:focus-visible + span { outline: 2px solid var(--focus); outline-offset: 2px; }
+.field-row { display: flex; flex-wrap: wrap; gap: 12px 28px; margin-bottom: 12px; }
+.num { font-size: 14px; color: var(--ink-2); display: inline-flex; align-items: center; gap: 8px; }
+.num input { width: 84px; font: inherit; color: var(--ink); background: var(--paper); border: 1px solid var(--grid); border-radius: 7px; padding: 6px 8px; }
+.num span { color: var(--ink-3); }
+.check { display: flex; align-items: center; gap: 9px; font-size: 14px; color: var(--ink-2); margin-top: 8px; cursor: pointer; }
+.check input { width: 16px; height: 16px; accent-color: var(--saffron); }
+.settings-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 14px; }
+.btn-plain { appearance: none; background: none; border: 1px solid var(--grid); color: var(--ink-2); border-radius: 8px; font: 500 14px/1 var(--body); padding: 10px 14px; cursor: pointer; }
+.btn-plain:hover { color: var(--ink); border-color: var(--ink-3); }
+.saved { font-size: 13.5px; color: var(--up); }
+@media (max-width: 720px) { .bench-grid { grid-template-columns: 1fr; } }
