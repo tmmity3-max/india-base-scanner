@@ -69,7 +69,7 @@ print(f"\\nLoaded {len(data)}/{len(universe)} stocks. Latest bar: {latest}")
     code("""
 #@title Scan settings
 #@markdown **Liquidity**
-MIN_PRICE = 20  #@param {type:"number"}
+MIN_PRICE = 50  #@param {type:"number"}
 MIN_TURNOVER_CR = 1.0  #@param {type:"number"}
 #@markdown **Trend Template**
 MIN_RS = 70  #@param {type:"slider", min:0, max:99, step:1}
@@ -150,7 +150,7 @@ except ImportError:
 - **Multi-Year Base:** the highest high before the last 5 bars was set 2+ years ago, the base was no deeper than 60%, and price is now within 5% below or up to 10% above that old high.
 - **IPO Base:** listed 20-500 trading days ago, based 10+ days below the post-listing high with a depth of 35% or less, and now within 8% of that high.
 - **Murphy:** John Murphy's positional trend-following. Weekly filter from completed weeks only (no repainting): price above a rising 40-week SMA (or weekly MACD above signal, or both). Daily entry: 10-day SMA crossing above the 50-day, the 4-week rule (close above the high of the last 4 full weeks), or a crossover confirmed by a 2-week breakout. Lists stocks whose entry signal fired in the last 5 sessions. The same rules as a free TradingView indicator: `pine/murphy_trend_following.pine` in the GitHub repo.
-- **Liquidity:** every screen needs price ≥ ₹20 and 50-day average turnover ≥ ₹1 crore. RS is ranked among those liquid stocks only.
+- **Liquidity:** every screen needs price ≥ ₹50 and 50-day average turnover ≥ ₹1 crore. RS is ranked among those liquid stocks only.
 - **vol_ratio:** today's volume ÷ 50-day average. Above 1.5 on a breakout day is a strong sign.
 
 These are standard, published ideas from technical analysis, applied with the same fixed rules to every stock.

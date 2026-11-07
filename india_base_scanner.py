@@ -318,7 +318,7 @@ def fetch_fundamentals(symbols: Iterable[str], suffix: str = ".NS", workers: int
 @dataclass
 class ScanConfig:
     # --- Liquidity filters (applied to every screen) ---
-    min_price: float = 20.0               # ₹
+    min_price: float = 50.0               # ₹ (every screen)
     min_turnover_cr: float = 1.0          # 50-day avg traded value, ₹ crore/day
 
     # --- Trend Template (Stage 2) ---

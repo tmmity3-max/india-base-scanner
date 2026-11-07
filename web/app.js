@@ -519,7 +519,7 @@
     const d = state.data;
     $("headline").textContent = `Setups after the close on ${longDate(d.data_date)}`;
     const liquid = d.stocks_liquid != null
-      ? `${nf0.format(d.stocks_liquid)} liquid stocks (average daily turnover of ₹${d.min_turnover_cr} crore or more) out of ${nf0.format(d.stocks_scanned)} ${pretty(d.universe) === "all NSE stocks" ? "NSE stocks" : "in the " + pretty(d.universe)} scanned. `
+      ? `${nf0.format(d.stocks_liquid)} liquid stocks (price of ₹${d.min_price ?? 50} or more and average daily turnover of ₹${d.min_turnover_cr} crore or more) out of ${nf0.format(d.stocks_scanned)} ${pretty(d.universe) === "all NSE stocks" ? "NSE stocks" : "in the " + pretty(d.universe)} scanned. `
       : `${nf0.format(d.stocks_scanned)} stocks from the ${pretty(d.universe)} scanned. `;
     $("meta").textContent = liquid + `RS line measured against the ${pretty(d.benchmark)}. Updated ${timeOf(d.generated_at)}.`;
 

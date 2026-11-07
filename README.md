@@ -23,7 +23,7 @@ No installation, no account, no paid data. Open the notebook, click *Run all*, a
 Every threshold is a **dial** in the notebook form. Change it, re-run, and the re-scan takes seconds without downloading again.
 
 ### Extras
-- **All NSE stocks** with a liquidity filter: price ≥ ₹20 and average daily turnover ≥ ₹1 crore
+- **All NSE stocks** with a liquidity filter: price ≥ ₹50 and average daily turnover ≥ ₹1 crore
 - **RS rating (1-99)** ranked against the liquid stocks you scan
 - **RS line vs NIFTY 50 or NIFTY 500** (switchable), with a "new 52-week high" flag
 - **Charts**: candles, 50/150/200 SMAs, pivot lines, volume and the RS line
