@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>India Base Scanner – daily VCP, all-time-high and base breakout screens for NSE</title>
+  <meta name="description" content="Free, open-source daily screens for NSE stocks: Trend Template, VCP, Blue Sky (all-time high), Multi-Year Base and IPO Base, with RS rating and charts. Updated after every close.">
+  <meta property="og:title" content="India Base Scanner">
+  <meta property="og:description" content="Today's VCP, all-time-high and base breakout setups across the NIFTY 500. Free and open source.">
+  <meta name="theme-color" content="#15233F">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2315233F'/%3E%3Cpath d='M6 22h6l3-9 3 5 3-7 5 11' fill='none' stroke='%23E39B2D' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Public+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="top">
+    <a class="brand" href="/" aria-label="India Base Scanner home">
+      <svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="7"/><path d="M6 22h6l3-9 3 5 3-7 5 11"/></svg>
+      <span>India Base Scanner</span>
+    </a>
+    <nav class="links">
+      <a href="https://colab.research.google.com/github/tmmity3-max/india-base-scanner/blob/main/India_Base_Scanner.ipynb" target="_blank" rel="noopener">Run your own scan in Colab</a>
+      <a href="https://github.com/tmmity3-max/india-base-scanner" target="_blank" rel="noopener">GitHub</a>
+    </nav>
+  </header>
+
+  <main>
+    <section class="intro">
+      <h1 id="headline">Today's setups</h1>
+      <p id="meta" class="meta">Loading the latest scan…</p>
+    </section>
+
+    <nav class="screens" id="screens" role="tablist" aria-label="Screens"></nav>
+    <p class="screen-note" id="screenNote"></p>
+
+    <section class="workspace" id="workspace">
+      <div class="list">
+        <div class="tools">
+          <label class="search">
+            <span class="sr">Search stocks</span>
+            <input id="search" type="search" placeholder="Filter by stock or industry" autocomplete="off">
+          </label>
+          <span id="count" class="count"></span>
+        </div>
+        <div class="table-wrap">
+          <table id="table">
+            <thead></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div id="empty" class="empty" hidden></div>
+      </div>
+
+      <aside class="chart-panel" id="chartPanel" aria-live="polite">
+        <div class="chart-head">
+          <div>
+            <h2 id="chartTitle">Pick a stock</h2>
+            <p id="chartSub" class="chart-sub">Click any row to see its chart.</p>
+          </div>
+          <button class="close" id="closeChart" aria-label="Close chart">✕</button>
+        </div>
+        <div class="readout" id="readout"></div>
+        <canvas id="chart" role="img" aria-label="Price chart"></canvas>
+        <div class="legend">
+          <span><i class="k-sma50"></i>SMA 50</span>
+          <span><i class="k-sma150"></i>SMA 150</span>
+          <span><i class="k-sma200"></i>SMA 200</span>
+          <span><i class="k-level"></i>Pivot / key high</span>
+          <span id="rsLegend"><i class="k-rs"></i>RS line vs index</span>
+        </div>
+      </aside>
+    </section>
+
+    <section class="how" id="how">
+      <h2>How the screens work</h2>
+      <dl>
+        <div><dt>Trend Template</dt><dd>Price above the 50, 150 and 200-day averages in that order, the 200-day rising for a month, at least 25% above the 52-week low, within 25% of the 52-week high, and RS rating of 70 or more.</dd></div>
+        <div><dt>VCP</dt><dd>Passes the Trend Template, then at least two pullbacks in the last six months, each no deeper than the one before, the last under 12%, volume drying up, and price within 6% of the pivot (the high of the last pullback).</dd></div>
+        <div><dt>Blue Sky</dt><dd>Within 3% of the all-time high, with at least three years of history and RS of 70 or more. No old buyers waiting to sell above.</dd></div>
+        <div><dt>Multi-Year Base</dt><dd>The highest price was set two or more years ago and has not been beaten since. Price is now near or just above that old high.</dd></div>
+        <div><dt>IPO Base</dt><dd>Listed within the last two years, has built a base at least 10 days long and no deeper than 35%, and is now within 8% of its post-listing high.</dd></div>
+        <div><dt>RS rating</dt><dd>Weighted 12-month return, with the latest quarter counting double, ranked 1–99 against every stock scanned.</dd></div>
+      </dl>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <p><strong>Not investment advice.</strong> Every list here is the output of a fixed rule applied to end-of-day data from Yahoo Finance, which can be delayed or wrong. Check the chart on your broker before acting. The author is not a SEBI-registered adviser or research analyst.</p>
+    <p>Open source under the MIT licence. <a href="https://github.com/tmmity3-max/india-base-scanner/issues" target="_blank" rel="noopener">Report a problem or suggest a screen</a>.</p>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>

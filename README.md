@@ -28,6 +28,16 @@ Every threshold is a **dial** in the notebook form. Change it, re-run, and the r
 - **Excel export**: one sheet per screen, plus your settings and every metric
 - Universes: NIFTY 50 / 100 / 200 / 500, Midcap 150, Smallcap 250, Microcap 250, all NSE EQ stocks, or your own list
 
+## Website
+
+A free website shows the latest scan. It is updated automatically every weekday after the market closes:
+
+- `scripts/daily_scan.py` runs the NIFTY 500 scan and writes JSON into `web/data/`.
+- `.github/workflows/daily-scan.yml` runs that script at 16:53 IST, Monday to Friday, and commits the results.
+- Vercel serves the static site in `web/`. Each commit redeploys it, so there is no server and no database.
+
+To host your own copy, import this repo on [Vercel](https://vercel.com/new), set **Root Directory** to `web` and **Framework Preset** to *Other*, then click Deploy.
+
 ## Quick start
 
 1. Click **Open in Colab** above.
@@ -105,6 +115,9 @@ india_base_scanner.py      # the engine (screens, RS, charts, export)
 India_Base_Scanner.ipynb   # Colab notebook (generated)
 tools/build_notebook.py    # rebuilds the notebook from the engine
 tests/test_screens.py      # offline tests on synthetic price paths
+scripts/daily_scan.py      # writes the website's JSON data
+web/                       # static website for Vercel (HTML, CSS, JS)
+.github/workflows/         # daily scan on GitHub Actions
 ```
 
 After editing `india_base_scanner.py`, run `python tools/build_notebook.py` to update the notebook, and `python tests/test_screens.py` to check nothing broke.
@@ -114,7 +127,7 @@ After editing `india_base_scanner.py`, run `python tools/build_notebook.py` to u
 - [ ] Backtest each screen over past years
 - [ ] Sector / industry rotation table
 - [ ] Cup-with-handle and flat-base screens
-- [ ] Daily auto-run with GitHub Actions and results published to GitHub Pages
+- [x] Daily auto-run with GitHub Actions and a website on Vercel
 - [ ] Telegram alert when a stock breaks its pivot on volume
 
 Suggestions and pull requests are welcome. Open an issue first for big changes.
