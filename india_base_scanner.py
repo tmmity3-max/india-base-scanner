@@ -578,7 +578,6 @@ def find_murphy(df: pd.DataFrame, cfg: ScanConfig, bench: Optional[pd.Series] = 
     confirmed by a 2-week breakout. A stock is listed when an entry that
     passed the filter fired in the last ``murphy_signal_days`` sessions.
 
-    No stop-loss is computed: where to place it is the trader's own decision.
     """
     out = {"murphy": False}
     if len(df) < 300:

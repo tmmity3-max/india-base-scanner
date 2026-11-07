@@ -13,9 +13,11 @@
 //  • ADX trend filter (optional), weekly MACD-histogram early warning
 //  • RS line vs NIFTY 50 / NIFTY 500 / custom (this pane)
 //
-//  This indicator marks ENTRY signals only. It does NOT suggest a stop-loss
-//  or an exit. Where you place your stop-loss, and how much you risk, is
-//  your own decision and your own responsibility.
+//  RISK ADVISORY
+//  • Take a proper stop-loss in every trade.
+//  • Manage your risk properly: risk only a small, fixed part of capital per trade.
+//  • Size the position from the distance between entry and stop-loss.
+//  • Never widen a stop-loss, and don't average down a losing trade.
 //
 //  Built for DAILY charts. Long side only. For education - not investment
 //  advice. The author is not a SEBI-registered adviser or research analyst.

@@ -13,7 +13,7 @@
   const SCREENS = {
     "VCP": "Tightening pullbacks with volume drying up, close to the pivot. Sorted by RS rating.",
     "Blue Sky": "At or breaking out to an all-time high, with strong relative strength.",
-    "Murphy": "John Murphy's trend-following: above a rising 40-week SMA, with a fresh 10/50 crossover, 4-week-rule breakout or crossover + 2-week breakout in the last 5 sessions. Entries only, newest first. Your stop-loss is your own choice.",
+    "Murphy": "John Murphy's trend-following: above a rising 40-week SMA, with a fresh 10/50 crossover, 4-week-rule breakout or crossover + 2-week breakout in the last 5 sessions. Newest signals first.",
     "Multi-Year Base": "Back at a high that held for two years or more. Sorted by base length.",
     "IPO Base": "Recent listings basing just under their post-listing high.",
     "Trend Template": "Every liquid stock in a Stage-2 uptrend with RS 70 or more. The pool the VCP screen draws from.",

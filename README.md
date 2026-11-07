@@ -18,7 +18,7 @@ No installation, no account, no paid data. Open the notebook, click *Run all*, a
 | **Blue Sky** | At or breaking out to an **all-time high**, so there is no overhead supply |
 | **Multi-Year Base** | Breaking out of a high that held for **2+ years** |
 | **IPO Base** | Recent listings basing just under their post-listing high |
-| **Murphy** | John Murphy's positional trend-following: above a rising 40-week SMA, then a fresh 10/50 crossover, 4-week-rule breakout, or crossover + 2-week breakout. Entries only |
+| **Murphy** | John Murphy's positional trend-following: above a rising 40-week SMA, then a fresh 10/50 crossover, 4-week-rule breakout, or crossover + 2-week breakout |
 
 Every threshold is a **dial** in the notebook form. Change it, re-run, and the re-scan takes seconds without downloading again.
 
@@ -53,7 +53,7 @@ To host your own copy, import this repo on [Vercel](https://vercel.com/new), set
 4. Open the indicator settings (gear icon) to choose the entry method, the weekly filter, the ADX filter and the RS benchmark.
 5. Optional: create an alert on **Murphy trend: ENTRY** to be notified of new signals.
 
-> The indicator marks **entries only**. It doesn't suggest a stop-loss or an exit. Your stop-loss, position size and risk are your own choice and your own responsibility.
+> Before using any signal, read the [Risk advisory](#risk-advisory).
 
 ## Heatmap
 
@@ -131,7 +131,7 @@ Based on John Murphy's *Technical Analysis of the Financial Markets* (moving ave
 | Entry: crossover + 2-week breakout | Within 10 days of a crossover, close breaks the last 2 full weeks' high |
 | Optional | ADX(14) ≥ 20 trend filter; weekly MACD histogram turning down as an early warning |
 
-The screen lists stocks whose entry signal fired in the last 5 sessions, with the entry price and how far price has moved since. **No stop-loss or exit is suggested: where you place your stop-loss is your own choice and responsibility.** All settings are `murphy_*` in `ScanConfig`.
+The screen lists stocks whose entry signal fired in the last 5 sessions, with the entry price and how far price has moved since. All settings are `murphy_*` in `ScanConfig`.
 </details>
 
 <details>
@@ -169,9 +169,20 @@ After editing `india_base_scanner.py`, run `python tools/build_notebook.py` to u
 
 Suggestions and pull requests are welcome. Open an issue first for big changes.
 
+## Risk advisory
+
+The screens and the TradingView indicator only point out stocks whose charts match a set of rules. They don't tell you where to exit. Before you act on any of them:
+
+1. **Take a proper stop-loss in every trade.** Decide where you are wrong before you buy, and place the stop-loss as soon as you enter.
+2. **Manage your risk properly.** Risk only a small, fixed part of your capital on any one trade, so a string of losses can't hurt you badly.
+3. **Size the position from the stop.** Work out the quantity from the distance between your entry and your stop-loss, not from how sure you feel.
+4. **Never widen a stop-loss.** Move it up to protect profit if you like, but never lower it to avoid taking a loss.
+5. **Don't average down a losing trade.** Adding to a position that is going against you increases the risk you already decided to take.
+6. **A screen is a starting point, not a signal to buy.** Check the chart, the news and the company yourself before every trade.
+
 ## Disclaimer
 
-This project is for **education and research only**. It is **not investment advice** and the author is not a SEBI-registered adviser or research analyst. A stock appearing in a screen is the output of a fixed rule, not a recommendation. No screen or indicator suggests a stop-loss: your stop-loss and risk are your own responsibility. Trading and investing carry risk of loss. Verify everything independently.
+This project is for **education and research only**. It is **not investment advice** and the author is not a SEBI-registered adviser or research analyst. A stock appearing in a screen is the output of a fixed rule, not a recommendation. Trading and investing carry risk of loss. Verify everything independently.
 
 ## License
 

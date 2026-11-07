@@ -38,7 +38,7 @@ Free, open-source **base & breakout screens for NSE stocks**:
 | **Blue Sky** | Price at or breaking out to an **all-time high** - no overhead supply |
 | **Multi-Year Base** | Breaking out of a high that held for **2+ years** |
 | **IPO Base** | Recent listings basing just under their post-listing high |
-| **Murphy** | John Murphy's positional trend-following: price above a rising 40-week SMA, then a fresh 10/50 crossover, 4-week-rule breakout, or crossover + 2-week breakout. Entries only |
+| **Murphy** | John Murphy's positional trend-following: price above a rising 40-week SMA, then a fresh 10/50 crossover, 4-week-rule breakout, or crossover + 2-week breakout |
 
 **How to use:** `Runtime → Run all`, or run the cells one by one. Change the settings in the form and re-run the scan cell - no need to download again.
 
@@ -149,11 +149,19 @@ except ImportError:
 - **Blue Sky:** close within 3% of the all-time high, with at least 3 years of history.
 - **Multi-Year Base:** the highest high before the last 5 bars was set 2+ years ago, the base was no deeper than 60%, and price is now within 5% below or up to 10% above that old high.
 - **IPO Base:** listed 20-500 trading days ago, based 10+ days below the post-listing high with a depth of 35% or less, and now within 8% of that high.
-- **Murphy:** John Murphy's positional trend-following. Weekly filter from completed weeks only (no repainting): price above a rising 40-week SMA (or weekly MACD above signal, or both). Daily entry: 10-day SMA crossing above the 50-day, the 4-week rule (close above the high of the last 4 full weeks), or a crossover confirmed by a 2-week breakout. Lists stocks whose entry signal fired in the last 5 sessions. No stop-loss is suggested: where you place it is your own choice and responsibility. The same rules as a free TradingView indicator: `pine/murphy_trend_following.pine` in the GitHub repo.
+- **Murphy:** John Murphy's positional trend-following. Weekly filter from completed weeks only (no repainting): price above a rising 40-week SMA (or weekly MACD above signal, or both). Daily entry: 10-day SMA crossing above the 50-day, the 4-week rule (close above the high of the last 4 full weeks), or a crossover confirmed by a 2-week breakout. Lists stocks whose entry signal fired in the last 5 sessions. The same rules as a free TradingView indicator: `pine/murphy_trend_following.pine` in the GitHub repo.
 - **Liquidity:** every screen needs price ≥ ₹20 and 50-day average turnover ≥ ₹1 crore. RS is ranked among those liquid stocks only.
 - **vol_ratio:** today's volume ÷ 50-day average. Above 1.5 on a breakout day is a strong sign.
 
 These are standard, published ideas from technical analysis, applied with the same fixed rules to every stock.
+
+## Risk advisory
+1. **Take a proper stop-loss in every trade.** Decide where you are wrong before you buy, and place the stop-loss as soon as you enter.
+2. **Manage your risk properly.** Risk only a small, fixed part of your capital on any one trade, so a string of losses can't hurt you badly.
+3. **Size the position from the stop.** Work out the quantity from the distance between your entry and your stop-loss, not from how sure you feel.
+4. **Never widen a stop-loss.** Move it up to protect profit if you like, but never lower it to avoid taking a loss.
+5. **Don't average down a losing trade.** Adding to a position that is going against you increases the risk you already decided to take.
+6. **A screen is a starting point, not a signal to buy.** Check the chart, the news and the company yourself before every trade.
 
 ## Contributing
 Ideas, bug reports and pull requests are welcome on GitHub. ⭐ the repo if it helps you!

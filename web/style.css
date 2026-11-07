@@ -284,3 +284,13 @@ canvas.mini { width: 100%; height: 340px; display: block; touch-action: pan-y; c
 .btn-primary:disabled { opacity: .5; cursor: default; }
 .pine details summary { cursor: pointer; font-size: 14px; color: var(--ink-2); }
 .pine pre { max-height: 420px; overflow: auto; background: var(--paper); border: 1px solid var(--grid); border-radius: 8px; padding: 12px; font-size: 12px; line-height: 1.45; }
+
+/* Risk advisory */
+.advisory { margin: 40px 0 0; padding: 20px 24px; border: 1px solid var(--grid); border-left: 4px solid var(--down); border-radius: 10px; background: var(--surface); }
+.advisory h2 { margin: 0 0 8px; font: 800 24px/1.2 var(--display); }
+.advisory p { margin: 0 0 10px; color: var(--ink-2); max-width: 80ch; font-size: 14.5px; }
+.advisory ol { margin: 0; padding-left: 22px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 36px; }
+.advisory li { color: var(--ink-2); font-size: 14px; padding-left: 4px; }
+.advisory li b { color: var(--ink); display: block; font-size: 15px; }
+.advisory li::marker { color: var(--down); font-weight: 700; }
+@media (max-width: 720px) { .advisory ol { grid-template-columns: 1fr; } }
