@@ -29,7 +29,7 @@ cells = [
 
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/{GITHUB_USER}/{REPO}/blob/main/India_Base_Scanner.ipynb)
 
-Free, open-source **base & breakout screens for NSE stocks**:
+Free, open-source **base & breakout screens for NSE stocks**. Today's results are also on the website: **[india-base-scanner-web.vercel.app](https://india-base-scanner-web.vercel.app)**
 
 | Screen | Looks for |
 |---|---|

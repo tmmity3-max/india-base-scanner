@@ -1,8 +1,13 @@
 # 🇮🇳 India Base Scanner
 
-**Free, open-source base & breakout screens for NSE stocks, running in Google Colab.**
-No installation, no account, no paid data. Open the notebook, click *Run all*, and get today's setups with charts and an Excel export.
+**Free, open-source base & breakout screens for every liquid NSE stock.**
+See today's setups on the website, or run your own scan in Google Colab. No installation, no account, no paid data.
 
+### 🌐 Live site: **[india-base-scanner-web.vercel.app](https://india-base-scanner-web.vercel.app)**
+Updated automatically after every market close: VCP, Blue Sky, Murphy trend-following, Multi-Year Base, IPO Base and Trend Template screens, zoomable charts with an RS line, fundamentals, and a NIFTY 50 / Next 50 / Midcap 150 / Smallcap 250 heatmap.
+
+[![Website](https://img.shields.io/badge/website-live-E39B2D)](https://india-base-scanner-web.vercel.app)
+[![Daily scan](https://github.com/tmmity3-max/india-base-scanner/actions/workflows/daily-scan.yml/badge.svg)](https://github.com/tmmity3-max/india-base-scanner/actions/workflows/daily-scan.yml)
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/tmmity3-max/india-base-scanner/blob/main/India_Base_Scanner.ipynb)
 ![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)
 ![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue)
@@ -33,7 +38,7 @@ Every threshold is a **dial** in the notebook form. Change it, re-run, and the r
 
 ## Website
 
-A free website shows the latest scan. It is updated automatically every weekday after the market closes:
+A free website, **[india-base-scanner-web.vercel.app](https://india-base-scanner-web.vercel.app)**, shows the latest scan. It is updated automatically every weekday after the market closes:
 
 - `scripts/daily_scan.py` scans every NSE stock, keeps those with ₹1 crore+ daily turnover, and writes JSON.
 - `.github/workflows/daily-scan.yml` runs it at 16:53 IST, Monday to Friday, and force-pushes the JSON to the `data` branch, so `main` doesn't grow every day.
@@ -183,6 +188,10 @@ The screens and the TradingView indicator only point out stocks whose charts mat
 ## Disclaimer
 
 This project is for **education and research only**. It is **not investment advice** and the author is not a SEBI-registered adviser or research analyst. A stock appearing in a screen is the output of a fixed rule, not a recommendation. Trading and investing carry risk of loss. Verify everything independently.
+
+## Contributing
+
+Bug reports, ideas and pull requests are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) to get started.
 
 ## License
 

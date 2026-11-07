@@ -3,6 +3,7 @@
 //  Murphy Trend-Following (MA / 4-Week Rule) + RS line  -  ENTRIES ONLY
 //  From the India Base Scanner project:
 //  https://github.com/tmmity3-max/india-base-scanner
+//  Daily scan results: https://india-base-scanner-web.vercel.app
 //
 //  Based on John Murphy, "Technical Analysis of the Financial Markets"
 //  (moving averages, the weekly rule, MACD).
