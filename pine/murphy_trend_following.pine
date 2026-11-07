@@ -1,0 +1,119 @@
+//@version=5
+// ════════════════════════════════════════════════════════════════════════════
+//  Murphy Trend-Following (MA / 4-Week Rule) + RS line  -  ENTRIES ONLY
+//  From the India Base Scanner project:
+//  https://github.com/tmmity3-max/india-base-scanner
+//
+//  Based on John Murphy, "Technical Analysis of the Financial Markets"
+//  (moving averages, the weekly rule, MACD).
+//  • Weekly filter: price > rising 40-week SMA and/or weekly MACD > signal
+//    (completed weeks only - no repainting)
+//  • Entry: 10/50-day crossover OR Donchian 4-week rule OR crossover
+//    confirmed by a 2-week breakout
+//  • ADX trend filter (optional), weekly MACD-histogram early warning
+//  • RS line vs NIFTY 50 / NIFTY 500 / custom (this pane)
+//
+//  This indicator marks ENTRY signals only. It does NOT suggest a stop-loss
+//  or an exit. Where you place your stop-loss, and how much you risk, is
+//  your own decision and your own responsibility.
+//
+//  Built for DAILY charts. Long side only. For education - not investment
+//  advice. The author is not a SEBI-registered adviser or research analyst.
+// ════════════════════════════════════════════════════════════════════════════
+indicator("Murphy Trend-Following (entries) + RS line", shorttitle = "Murphy-Trend", overlay = false, max_labels_count = 500)
+
+// ═══════════════════ INPUTS ═══════════════════
+grpF       = "Weekly trend filter"
+filterMode = input.string("Price > rising 40-wk SMA", "Filter", options = ["Price > rising 40-wk SMA", "Weekly MACD > signal", "Both", "None"], group = grpF)
+useAdx     = input.bool(false, "Also require ADX ≥ threshold (trending market)", group = grpF)
+adxMin     = input.int(20, "ADX threshold", group = grpF)
+
+grpE      = "Entry signal"
+entryMode = input.string("10/50 crossover", "Entry method", options = ["10/50 crossover", "4-week rule (Donchian)", "Crossover + 2-week breakout"], group = grpE)
+fastLen   = input.int(10, "Fast MA (book: 10; alt 5, 4)", minval = 1, group = grpE)
+slowLen   = input.int(50, "Slow MA (book: 50; alt 20, 18)", minval = 2, group = grpE)
+entryWks  = input.int(4, "Breakout: high of last N full weeks", minval = 1, group = grpE)
+
+grpD      = "Display"
+showMAs   = input.bool(true, "Plot MAs and weekly channel", group = grpD)
+showTable = input.bool(true, "Show status table", group = grpD)
+
+// ═══════════════════ RS LINE vs INDEX (shown in this pane) ═══════════════════
+grpRS       = "RS line vs index"
+rsChoice    = input.string("NIFTY 50", "Benchmark", options = ["NIFTY 50", "NIFTY 500", "Custom"], group = grpRS)
+rsCustomSym = input.symbol("NSE:NIFTYMIDCAP150", "Custom benchmark symbol", group = grpRS)
+rsMaLen     = input.int(50, "RS line moving average", minval = 1, group = grpRS)
+rsHiLen     = input.int(250, "RS new-high lookback (bars)", minval = 20, group = grpRS)
+showRsMa    = input.bool(true, "Show RS moving average", group = grpRS)
+showRsDots  = input.bool(true, "Mark RS new highs (blue) / RS leading price (pink)", group = grpRS)
+
+benchSym   = rsChoice == "NIFTY 50" ? "NSE:NIFTY" : rsChoice == "NIFTY 500" ? "NSE:CNX500" : rsCustomSym
+benchClose = request.security(benchSym, timeframe.period, close)
+rsLine     = benchClose > 0 ? close / benchClose * 100 : na
+rsMa       = ta.sma(rsLine, rsMaLen)
+rsNewHigh  = rsLine >= ta.highest(rsLine, rsHiLen)
+rsLeads    = rsNewHigh and close < ta.highest(close, rsHiLen)   // RS at new high before price = bullish
+
+// IBD-style weighted 12-month performance (40% last quarter) of stock minus benchmark
+wPerf(s) =>
+    (2 * (s / s[63] - 1) + (s / s[126] - 1) + (s / s[189] - 1) + (s / s[252] - 1)) / 5 * 100
+rsScore = wPerf(close) - wPerf(benchClose)
+
+plot(rsLine, "RS line", color = color.new(color.blue, 0), linewidth = 2)
+plot(showRsMa ? rsMa : na, "RS line MA", color = color.new(color.orange, 0))
+plotshape(showRsDots and rsNewHigh ? rsLine : na, title = "RS new high", style = shape.circle, location = location.absolute, color = color.new(color.blue, 0), size = size.tiny)
+plotshape(showRsDots and rsLeads ? rsLine : na, title = "RS leads price", style = shape.circle, location = location.absolute, color = color.new(color.fuchsia, 0), size = size.tiny)
+
+// ═══════════════════ WEEKLY DATA (completed weeks only — no repainting) ═══════════════════
+fWeekly() =>
+    [m, s, h] = ta.macd(close, 12, 26, 9)
+    sma40 = ta.sma(close, 40)
+    [sma40[1], sma40[5], m[1], s[1], h[1], h[2], ta.highest(high, entryWks)[1], ta.highest(high, 2)[1]]
+[wSma40, wSma40Ago, wMacd, wSig, wHist, wHistPrev, wHighN, wHigh2] = request.security(syminfo.tickerid, "W", fWeekly(), lookahead = barmerge.lookahead_on)
+
+f40   = close > wSma40 and wSma40 > wSma40Ago
+fMacd = wMacd > wSig
+filterOK = filterMode == "None" ? true : filterMode == "Both" ? (f40 and fMacd) : filterMode == "Weekly MACD > signal" ? fMacd : f40
+[diP, diM, adx] = ta.dmi(14, 14)
+adxOK = not useAdx or adx >= adxMin
+histWarn = wHist > 0 and wHist < wHistPrev and wHist != wHist[1]   // weekly histogram turning down (momentum warning)
+
+// ═══════════════════ DAILY ENTRY SIGNALS ═══════════════════
+fastMa = ta.sma(close, fastLen)
+slowMa = ta.sma(close, slowLen)
+crossUp   = ta.crossover(fastMa, slowMa)
+weekBreak = close > wHighN and close[1] <= wHighN
+twoWkConf = close > wHigh2
+
+var int lastCrossUp = na
+if crossUp
+    lastCrossUp := bar_index
+recentCross = not na(lastCrossUp) and bar_index - lastCrossUp <= 10 and fastMa > slowMa
+
+rawEntry = entryMode == "10/50 crossover" ? crossUp : entryMode == "4-week rule (Donchian)" ? weekBreak : (recentCross and twoWkConf and not twoWkConf[1])
+buySig   = rawEntry and filterOK and adxOK
+
+// ═══════════════════ CHART OUTPUT ═══════════════════
+plot(showMAs ? fastMa : na, "Fast MA", color = color.new(color.green, 0), force_overlay = true)
+plot(showMAs ? slowMa : na, "Slow MA", color = color.new(color.blue, 0), linewidth = 2, force_overlay = true)
+plot(showMAs and entryMode != "10/50 crossover" ? wHighN : na, "N-week high (entry)", color = color.new(color.teal, 30), style = plot.style_stepline, force_overlay = true)
+bgcolor(filterOK ? color.new(color.green, 94) : color.new(color.red, 95), title = "Weekly filter", force_overlay = true)
+plotshape(buySig, title = "ENTRY", style = shape.labelup, location = location.belowbar, color = color.new(color.green, 0), text = "ENTRY", textcolor = color.white, size = size.small, force_overlay = true)
+plotshape(rawEntry and not buySig, title = "Signal blocked by filter", style = shape.xcross, location = location.belowbar, color = color.new(color.gray, 30), size = size.tiny, force_overlay = true)
+plotshape(filterOK and histWarn, title = "Weekly MACD histogram turning down", style = shape.triangledown, location = location.abovebar, color = color.new(color.orange, 0), size = size.tiny, force_overlay = true)
+
+// ═══════════════════ STATUS TABLE ═══════════════════
+var table tbl = table.new(position.top_right, 2, 6, border_width = 1, force_overlay = true)
+fInfo(r, txt, val, c) =>
+    table.cell(tbl, 0, r, txt, text_color = color.white, bgcolor = color.new(color.black, 25), text_size = size.small, text_halign = text.align_left)
+    table.cell(tbl, 1, r, val, text_color = color.white, bgcolor = c, text_size = size.small)
+if barstate.islast and showTable
+    navy = color.new(color.navy, 25)
+    fInfo(0, "Murphy trend — " + entryMode, filterOK ? "Filter ON" : "Filter OFF", filterOK ? color.new(color.green, 10) : color.new(color.gray, 30))
+    fInfo(1, "Price > rising 40-wk SMA", f40 ? "✔" : "✘", f40 ? color.new(color.green, 25) : color.new(color.red, 25))
+    fInfo(2, "Weekly MACD > signal", fMacd ? "✔" : "✘", fMacd ? color.new(color.green, 25) : color.new(color.red, 25))
+    fInfo(3, "ADX(14)", str.tostring(adx, "#.#"), adx >= adxMin ? color.new(color.green, 25) : navy)
+    fInfo(4, str.tostring(entryWks) + "-week high", str.tostring(wHighN, format.mintick), navy)
+    fInfo(5, "RS score vs " + rsChoice, na(rsScore) ? "n/a" : str.tostring(rsScore, "#.#") + "%", nz(rsScore) > 0 ? color.new(color.green, 30) : color.new(color.red, 30))
+
+alertcondition(buySig, "Murphy trend: ENTRY", "{{ticker}} Murphy trend-following entry signal at {{close}}")

@@ -13,7 +13,7 @@
   const SCREENS = {
     "VCP": "Tightening pullbacks with volume drying up, close to the pivot. Sorted by RS rating.",
     "Blue Sky": "At or breaking out to an all-time high, with strong relative strength.",
-    "Murphy": "John Murphy's trend-following: above a rising 40-week SMA, with a fresh 10/50 crossover, 4-week-rule breakout or crossover + 2-week breakout in the last 5 sessions. Newest signals first.",
+    "Murphy": "John Murphy's trend-following: above a rising 40-week SMA, with a fresh 10/50 crossover, 4-week-rule breakout or crossover + 2-week breakout in the last 5 sessions. Entries only, newest first. Your stop-loss is your own choice.",
     "Multi-Year Base": "Back at a high that held for two years or more. Sorted by base length.",
     "IPO Base": "Recent listings basing just under their post-listing high.",
     "Trend Template": "Every liquid stock in a Stage-2 uptrend with RS 70 or more. The pool the VCP screen draws from.",
@@ -25,7 +25,8 @@
     symbol: ["Stock", "txt"], industry: ["Industry", "txt"],
     close: ["Close ₹", "num"], "chg_1d_%": ["Day %", "signed"],
     rs_rating: ["RS", "int"], rs_line_new_high: ["RS line high", "bool"],
-    pct_from_52w_high: ["From 52w high %", "signed"], pct_above_52w_low: ["Above 52w low %", "pct"],
+    pct_from_52w_high: ["From 52w high %", "signed"], pct_above_52w_low: ["Above 52w low %", "signed"],
+    market_cap_cr: ["M.cap ₹ cr", "int"],
     vol_ratio: ["Volume ×", "x"], turnover_cr: ["Turnover ₹ cr", "num"],
     vcp_pivot: ["Pivot ₹", "num"], vcp_pct_from_pivot: ["From pivot %", "signed"],
     vcp_contractions: ["Pullbacks", "int"], vcp_depths: ["Pullback depths", "txt"],
@@ -38,8 +39,8 @@
     ipo_pct_from_high: ["From high %", "signed"], ipo_base_days: ["Base days", "int"],
     ipo_depth: ["Base depth %", "pct"],
     murphy_signal: ["Signal", "txt"], murphy_signal_date: ["Signal date", "txt"],
-    murphy_days_ago: ["Days ago", "int"], murphy_entry: ["Entry ₹", "num"], murphy_stop: ["Stop ₹", "num"],
-    murphy_risk_pct: ["Risk %", "pct"], murphy_pct_from_entry: ["From entry %", "signed"],
+    murphy_days_ago: ["Days ago", "int"], murphy_entry: ["Entry ₹", "num"],
+    murphy_pct_from_entry: ["From entry %", "signed"],
     murphy_sma40w: ["40-week SMA ₹", "num"], murphy_weekly_macd_ok: ["Weekly MACD > signal", "bool"],
     adx14: ["ADX", "num"], murphy_rs_score: ["RS score vs index %", "signed"],
   };
@@ -64,6 +65,18 @@
     }
   }
   const signed = (v) => (v > 0 ? "+" : "") + nf2.format(v);
+  const nf1 = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 1, minimumFractionDigits: 1 });
+  function mcapText(cr) {
+    if (cr == null) return "";
+    if (cr >= 100000) return `₹${nf2.format(cr / 100000)} lakh cr`;
+    return `₹${nf0.format(cr)} cr`;
+  }
+  function hiLoText(r) {
+    const bits = [];
+    if (r.pct_from_52w_high != null) bits.push(`${signed(r.pct_from_52w_high)}% from 52w high`);
+    if (r.pct_above_52w_low != null) bits.push(`${signed(r.pct_above_52w_low)}% above 52w low`);
+    return bits.join(", ");
+  }
   const longDate = (iso) => new Date(iso + "T00:00:00").toLocaleDateString("en-IN",
     { weekday: "long", day: "numeric", month: "long", year: "numeric" });
   const pretty = (u) => (u || "").replace(/^NIFTY(\d+)$/, "NIFTY $1").replace("ALL_EQ", "all NSE stocks");
@@ -524,6 +537,7 @@
     $("zoomReset").addEventListener("click", () => mainChart.reset());
     for (const b of document.querySelectorAll("[data-range]")) b.addEventListener("click", () => mainChart.show(+b.dataset.range));
     $("scaleAuto").addEventListener("click", () => mainChart.setAuto(!mainChart.auto));
+    $("pineCopy").addEventListener("click", copyPine);
     $("scaleLog").addEventListener("click", () => mainChart.setLog(!mainChart.log));
   }
 
@@ -560,6 +574,8 @@
     state.sort = null;
     for (const b of $("screens").children) b.setAttribute("aria-selected", b.dataset.screen === name ? "true" : "false");
     $("screenNote").textContent = SCREENS[name];
+    $("pineGift").hidden = name !== "Murphy";
+    if (name === "Murphy") loadPine();
     refreshList();
     if (state.view === "table") {
       const rows = state.data.screens[name] || [];
@@ -620,6 +636,33 @@
     }
     if (state.view === "table") renderTable(list, all.length);
     else renderGrid(list);
+  }
+
+  // ---------- Murphy TradingView indicator ----------
+  const PINE_URL = "https://raw.githubusercontent.com/tmmity3-max/india-base-scanner/main/pine/murphy_trend_following.pine";
+  let pineLoaded = false;
+  async function loadPine() {
+    if (pineLoaded) return;
+    pineLoaded = true;
+    try {
+      const r = await fetch(PINE_URL);
+      if (!r.ok) throw new Error(r.status);
+      $("pineCode").textContent = await r.text();
+      $("pineCopy").disabled = false;
+    } catch (e) {
+      pineLoaded = false;
+      $("pineCode").textContent = "Couldn't load the code here. Open it on GitHub with the link above.";
+    }
+  }
+  async function copyPine() {
+    const txt = $("pineCode").textContent;
+    try { await navigator.clipboard.writeText(txt); }
+    catch (e) {
+      const ta = document.createElement("textarea"); ta.value = txt; document.body.appendChild(ta);
+      ta.select(); document.execCommand("copy"); ta.remove();
+    }
+    $("pineCopy").textContent = "Copied";
+    setTimeout(() => ($("pineCopy").textContent = "Copy code"), 2000);
   }
 
   // ---------- table ----------
@@ -703,11 +746,39 @@
     $("chartSub").innerHTML = "";
     $("chartSub").append(bits.join(". ") + (bits.length ? ". " : ""), tvLink(sym));
     $("rsLegend").hidden = !c.rs;
+    const mc = (c.fund && c.fund.market_cap_cr) || row.market_cap_cr;
+    $("chartMcap").innerHTML = mc != null ? `<span>Market cap</span><b>${mcapText(mc)}</b>` : "";
+    renderFund(c, row);
     const murphy = state.screen === "Murphy";
     $("sma10Legend").hidden = !(murphy && c.sma10);
     mainChart.setData(c, { sma10: murphy });
   }
+  function renderFund(c, row) {
+    const f = c.fund || {}, box = $("fund");
+    const pct = (v) => (v == null ? null : `${nf1.format(v)}%`);
+    const num = (v, d = 2) => (v == null ? null : new Intl.NumberFormat("en-IN", { maximumFractionDigits: d, minimumFractionDigits: d }).format(v));
+    const items = [
+      ["Market cap", mcapText(f.market_cap_cr || row.market_cap_cr) || null],
+      ["P/E (TTM)", num(f.pe, 1)], ["P/B", num(f.pb, 2)], ["EPS (TTM) ₹", num(f.eps, 2)],
+      ["ROE", pct(f.roe)], ["Debt / equity", num(f.debt_to_equity, 1)],
+      ["Profit margin", pct(f.profit_margin)], ["Revenue growth (YoY)", pct(f.revenue_growth)],
+      ["Earnings growth (YoY)", pct(f.earnings_growth)], ["Dividend yield", pct(f.dividend_yield)],
+      ["Book value ₹", num(f.book_value, 2)], ["Beta", num(f.beta, 2)],
+      ["52-week high ₹", num(c.hi52, 2)], ["52-week low ₹", num(c.lo52, 2)],
+      ["From 52w high", row.pct_from_52w_high != null ? `${signed(row.pct_from_52w_high)}%` : null],
+      ["Above 52w low", row.pct_above_52w_low != null ? `${signed(row.pct_above_52w_low)}%` : null],
+    ];
+    const shown = items.filter(([, v]) => v != null && v !== "");
+    if (!shown.length) { box.hidden = true; return; }
+    box.hidden = false;
+    const sector = [f.sector, f.yf_industry].filter(Boolean).join(" · ");
+    box.innerHTML = `<h3>Fundamentals${f.name ? ` <span>${f.name}</span>` : ""}</h3>` +
+      `<dl>${shown.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join("")}</dl>` +
+      `<p class="fund-src">${sector ? sector + ". " : ""}Source: Yahoo Finance, may be out of date. Check the company's filings before relying on it.</p>`;
+  }
+
   function clearChart() {
+    $("chartMcap").innerHTML = ""; $("fund").hidden = true;
     state.symbol = null;
     $("chartTitle").textContent = "Pick a stock";
     $("chartSub").textContent = "Click any row to see its chart.";
@@ -727,10 +798,10 @@
     switch (state.screen) {
       case "VCP": return r.vcp_pivot != null ? `Pivot ₹${nf2.format(r.vcp_pivot)} (${signed(r.vcp_pct_from_pivot)}%), ${r.vcp_depths}` : "";
       case "Blue Sky": return r.ath != null ? `All-time high ₹${nf2.format(r.ath)} (${signed(r.pct_from_ath)}%)` : "";
-      case "Murphy": return r.murphy_signal ? `${r.murphy_signal}, ${r.murphy_days_ago === 0 ? "today" : r.murphy_days_ago + "d ago"}. Entry ₹${nf2.format(r.murphy_entry)}, stop ₹${nf2.format(r.murphy_stop)} (${nf2.format(r.murphy_risk_pct)}% risk)` : "";
+      case "Murphy": return r.murphy_signal ? `${r.murphy_signal}, ${r.murphy_days_ago === 0 ? "today" : r.murphy_days_ago + "d ago"}, entry ₹${nf2.format(r.murphy_entry)}` : "";
       case "Multi-Year Base": return r.myb_pivot != null ? `Old high ₹${nf2.format(r.myb_pivot)} held ${r.myb_base_years} years` : "";
       case "IPO Base": return r.ipo_high != null ? `Listing high ₹${nf2.format(r.ipo_high)} (${signed(r.ipo_pct_from_high)}%)` : "";
-      default: return r.pct_from_52w_high != null ? `${signed(r.pct_from_52w_high)}% from 52-week high` : "";
+      default: return "";
     }
   }
   function renderGrid(list) {
@@ -763,8 +834,10 @@
           <a class="card-sym" href="${tvUrl(r.symbol)}" target="_blank" rel="noopener" title="Open ${r.symbol} on TradingView">${r.symbol}</a>
           <span class="card-px">₹${nf2.format(r.close)} ${chg != null ? `<span class="${chg >= 0 ? "pos" : "neg"}">${signed(chg)}%</span>` : ""}</span>
           ${r.rs_rating != null ? `<span class="card-rs">RS ${nf0.format(r.rs_rating)}</span>` : ""}
+          ${r.market_cap_cr != null ? `<span class="card-mcap" title="Market capitalisation">M.cap ${mcapText(r.market_cap_cr)}</span>` : ""}
         </header>
         <p class="card-note">${[r.industry, keyFact(r)].filter(Boolean).join(". ")}</p>
+        <p class="card-note card-hilo">${hiLoText(r)}</p>
         <canvas class="mini" tabindex="0" role="img" aria-label="${r.symbol} chart. Scroll to zoom, drag to move."></canvas>
         <div class="card-tools">
           <div class="zoom" role="group" aria-label="Zoom ${r.symbol}">

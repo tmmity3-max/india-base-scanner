@@ -21,6 +21,7 @@
       <span>India Base Scanner</span>
     </a>
     <nav class="links">
+      <a href="heatmap.html">Heatmap</a>
       <a href="https://colab.research.google.com/github/tmmity3-max/india-base-scanner/blob/main/India_Base_Scanner.ipynb" target="_blank" rel="noopener">Run your own scan in Colab</a>
       <a href="https://github.com/tmmity3-max/india-base-scanner" target="_blank" rel="noopener">GitHub</a>
     </nav>
@@ -30,6 +31,10 @@
     <section class="intro">
       <h1 id="headline">Today's setups</h1>
       <p id="meta" class="meta">Loading the latest scan…</p>
+      <a class="heat-link" href="heatmap.html">
+        <span class="heat-swatch" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></span>
+        NIFTY 50 and Next 50 heatmap
+      </a>
     </section>
 
     <nav class="screens" id="screens" role="tablist" aria-label="Screens"></nav>
@@ -72,6 +77,7 @@
             <h2 id="chartTitle">Pick a stock</h2>
             <p id="chartSub" class="chart-sub">Click any row to see its chart.</p>
           </div>
+          <div class="chart-mcap" id="chartMcap"></div>
           <button class="close" id="closeChart" aria-label="Close chart">✕</button>
         </div>
         <div class="chart-bar">
@@ -100,11 +106,32 @@
           <span><i class="k-level"></i>Pivot / key high</span>
           <span id="rsLegend"><i class="k-rs"></i>RS line vs index</span>
         </div>
+        <section class="fund" id="fund" hidden aria-label="Fundamentals"></section>
       </aside>
     </section>
 
     <section class="grid" id="grid" hidden aria-label="Charts"></section>
     <p class="grid-hint" id="gridHint">Scroll on a chart to zoom, drag to move through time, drag its price scale to stretch it. Click a stock name to open it on TradingView.</p>
+
+    <section class="pine" id="pineGift" hidden aria-labelledby="pineTitle">
+      <h2 id="pineTitle">Free TradingView indicator: Murphy trend-following</h2>
+      <p>The same rules as this screen, as a TradingView indicator for daily charts: the weekly 40-week SMA filter, ENTRY labels for the 10/50 crossover, the 4-week rule or a crossover with a 2-week breakout, an optional ADX filter, and an RS line against NIFTY 50, NIFTY 500 or any index you pick.</p>
+      <ol>
+        <li>Click <b>Copy code</b>.</li>
+        <li>In TradingView, open a daily chart and click <b>Pine Editor</b> at the bottom of the screen.</li>
+        <li>Delete what's in the editor, paste the code, and click <b>Add to chart</b>. Click <b>Save</b> to keep it in your indicators.</li>
+        <li>Choose the entry method, filter and RS benchmark in the indicator's settings (the gear icon).</li>
+      </ol>
+      <p class="advice"><b>Entries only.</b> The indicator and this screen don't suggest a stop-loss or an exit. Where you place your stop-loss and how much you risk is your own choice and your own responsibility.</p>
+      <div class="pine-actions">
+        <button type="button" id="pineCopy" class="btn-primary" disabled>Copy code</button>
+        <a href="https://github.com/tmmity3-max/india-base-scanner/blob/main/pine/murphy_trend_following.pine" target="_blank" rel="noopener">View on GitHub</a>
+      </div>
+      <details>
+        <summary>Show the code</summary>
+        <pre><code id="pineCode">Loading…</code></pre>
+      </details>
+    </section>
 
     <section class="how" id="how">
       <h2>How the screens work</h2>
@@ -112,7 +139,7 @@
         <div><dt>Trend Template</dt><dd>Price above the 50, 150 and 200-day averages in that order, the 200-day rising for a month, at least 25% above the 52-week low, within 25% of the 52-week high, and RS rating of 70 or more.</dd></div>
         <div><dt>VCP</dt><dd>Passes the Trend Template, then at least two pullbacks in the last six months, each no deeper than the one before, the last under 12%, volume drying up, and price within 6% of the pivot (the high of the last pullback).</dd></div>
         <div><dt>Blue Sky</dt><dd>Within 3% of the all-time high, with at least three years of history and RS of 70 or more. No old buyers waiting to sell above.</dd></div>
-        <div><dt>Murphy</dt><dd>John Murphy's positional trend-following. Weekly filter from completed weeks: price above a rising 40-week SMA. Then a 10-day SMA crossing above the 50-day, a close above the last 4 full weeks' high, or a crossover confirmed by a 2-week breakout, within the last 5 sessions. Stop below the 2-week low.</dd></div>
+        <div><dt>Murphy</dt><dd>John Murphy's positional trend-following. Weekly filter from completed weeks: price above a rising 40-week SMA. Then, within the last 5 sessions, a 10-day SMA crossing above the 50-day, a close above the last 4 full weeks' high, or a crossover confirmed by a 2-week breakout. Entries only: no stop-loss is suggested.</dd></div>
         <div><dt>Multi-Year Base</dt><dd>The highest price was set two or more years ago and has not been beaten since. Price is now near or just above that old high.</dd></div>
         <div><dt>IPO Base</dt><dd>Listed within the last two years, has built a base at least 10 days long and no deeper than 35%, and is now within 8% of its post-listing high.</dd></div>
         <div><dt>RS rating</dt><dd>Weighted 12-month return, with the latest quarter counting double, ranked 1–99 against every liquid stock scanned.</dd></div>
@@ -122,7 +149,7 @@
   </main>
 
   <footer class="foot">
-    <p><strong>Not investment advice.</strong> Every list here is the output of a fixed rule applied to end-of-day data from Yahoo Finance, which can be delayed or wrong. Check the chart on your broker before acting. The author is not a SEBI-registered adviser or research analyst.</p>
+    <p><strong>Not investment advice.</strong> Every list here is the output of a fixed rule applied to end-of-day data from Yahoo Finance, which can be delayed or wrong. Check the chart on your broker before acting. No list here suggests a stop-loss or exit: your stop-loss, position size and risk are your own choice and your own responsibility. The author is not a SEBI-registered adviser or research analyst.</p>
     <p>Open source under the MIT licence. <a href="https://github.com/tmmity3-max/india-base-scanner/issues" target="_blank" rel="noopener">Report a problem or suggest a screen</a>.</p>
   </footer>
 

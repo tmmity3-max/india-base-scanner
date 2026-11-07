@@ -49,6 +49,7 @@ __version__ = "0.1.0"
 _NSE_IDX = "https://archives.nseindia.com/content/indices/"
 NSE_LISTS = {
     "NIFTY50": _NSE_IDX + "ind_nifty50list.csv",
+    "NIFTYNEXT50": _NSE_IDX + "ind_niftynext50list.csv",
     "NIFTY100": _NSE_IDX + "ind_nifty100list.csv",
     "NIFTY200": _NSE_IDX + "ind_nifty200list.csv",
     "NIFTY500": _NSE_IDX + "ind_nifty500list.csv",
@@ -240,10 +241,73 @@ def download_benchmark(name: str = "NIFTY500", period: str = "max") -> Optional[
     try:
         raw = yf.download(tk, period=period, interval="1d", auto_adjust=True, progress=False)
         df = _extract(raw, tk)
-        return None if df is None else df["Close"]
+        if df is None:
+            return None
+        s = df["Close"]
+        s = s[s > 0]
+        jump = s.pct_change().abs() > 0.15        # bad prints in index data
+        return s.mask(jump).ffill()
     except Exception as exc:
         warnings.warn(f"Benchmark {tk} download failed: {exc}")
         return None
+
+
+_FUND_FIELDS = {
+    "marketCap": "market_cap", "trailingPE": "pe", "priceToBook": "pb",
+    "returnOnEquity": "roe", "debtToEquity": "debt_to_equity",
+    "revenueGrowth": "revenue_growth", "earningsGrowth": "earnings_growth",
+    "profitMargins": "profit_margin", "dividendYield": "dividend_yield",
+    "trailingEps": "eps", "bookValue": "book_value", "beta": "beta",
+    "sector": "sector", "industry": "yf_industry", "longName": "name",
+}
+
+
+def fetch_fundamentals(symbols: Iterable[str], suffix: str = ".NS", workers: int = 6,
+                       verbose: bool = True) -> Dict[str, dict]:
+    """Market cap and key ratios from Yahoo Finance, one request per stock.
+
+    Best effort: anything Yahoo doesn't return is simply left out. Ratios are
+    converted to percentages where Yahoo gives fractions (ROE, margins, growth).
+    """
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    import yfinance as yf
+
+    def one(sym):
+        for attempt in range(2):
+            try:
+                info = yf.Ticker(sym + suffix).info or {}
+                out = {}
+                for k, v in _FUND_FIELDS.items():
+                    val = info.get(k)
+                    if val is None or (isinstance(val, float) and np.isnan(val)):
+                        continue
+                    out[v] = val
+                for k in ("roe", "revenue_growth", "earnings_growth", "profit_margin"):
+                    if k in out and isinstance(out[k], (int, float)):
+                        out[k] = round(out[k] * 100, 2)
+                dy = out.get("dividend_yield")
+                if isinstance(dy, (int, float)) and dy < 1:   # older yfinance gives a fraction
+                    out["dividend_yield"] = round(dy * 100, 2)
+                if isinstance(out.get("market_cap"), (int, float)):
+                    out["market_cap_cr"] = round(out["market_cap"] / 1e7, 0)
+                return sym, out
+            except Exception:
+                time.sleep(1.5 * (attempt + 1))
+        return sym, {}
+
+    syms = list(dict.fromkeys(symbols))
+    res: Dict[str, dict] = {}
+    with ThreadPoolExecutor(max_workers=workers) as ex:
+        futs = [ex.submit(one, s) for s in syms]
+        for k, f in enumerate(as_completed(futs), 1):
+            try:
+                sym, d = f.result(timeout=60)
+                res[sym] = d
+            except Exception:
+                pass
+            if verbose and k % 50 == 0:
+                print(f"  fundamentals: {k}/{len(syms)}")
+    return res
 
 
 # --------------------------------------------------------------------------
@@ -297,8 +361,6 @@ class ScanConfig:
     murphy_fast: int = 10                 # fast daily SMA (book: 10)
     murphy_slow: int = 50                 # slow daily SMA (book: 50)
     murphy_entry_weeks: int = 4           # breakout above the high of the last N full weeks
-    murphy_stop_weeks: int = 2            # initial stop: low of the last N full weeks
-    murphy_exit_weeks: int = 2            # 4-week-rule exit: low of the last N full weeks
     murphy_use_adx: bool = False          # also require ADX >= murphy_min_adx
     murphy_min_adx: float = 20.0
     murphy_signal_days: int = 5           # list BUY signals from the last N sessions
@@ -482,8 +544,6 @@ def _weekly_on_daily(df: pd.DataFrame, cfg: ScanConfig) -> pd.DataFrame:
         "w_hist": macd_line - signal,
         "w_hist_prev": (macd_line - signal).shift(1),
         "w_high_n": wk["High"].rolling(cfg.murphy_entry_weeks).max(),
-        "w_low_stop": wk["Low"].rolling(cfg.murphy_stop_weeks).min(),
-        "w_low_exit": wk["Low"].rolling(cfg.murphy_exit_weeks).min(),
         "w_high2": wk["High"].rolling(2).max(),
     }).shift(1)                                  # previous completed week
     week_of_day = df.index.to_period("W-FRI").to_timestamp(how="end").normalize()
@@ -491,53 +551,34 @@ def _weekly_on_daily(df: pd.DataFrame, cfg: ScanConfig) -> pd.DataFrame:
     return w.reindex(week_of_day).set_axis(df.index)
 
 
-def _murphy_run(close, fast, slow, w, entry_mode, filter_ok, adx_ok):
-    """Pine-style position loop for one entry method.
-
-    Returns (buy_index, entry, stop, in_position_now) for the most recent
-    BUY, or (None, ...) if there is none.
-    """
-    n = len(close)
-    cross_up = (fast > slow) & (fast.shift() <= slow.shift())
-    cross_dn = (fast < slow) & (fast.shift() >= slow.shift())
-    hi_n, lo_stop, lo_exit, hi2 = (w[k].to_numpy() for k in ("w_high_n", "w_low_stop", "w_low_exit", "w_high2"))
-    c, cu, cd = close.to_numpy(), cross_up.to_numpy(), cross_dn.to_numpy()
+def _murphy_entries(close, fast, slow, w, entry_mode) -> np.ndarray:
+    """Raw daily entry events for one method (before the weekly filter)."""
+    c = close.to_numpy()
+    cross_up = ((fast > slow) & (fast.shift() <= slow.shift())).to_numpy()
+    if entry_mode == "cross":
+        return cross_up
+    hi_n, hi2 = w["w_high_n"].to_numpy(), w["w_high2"].to_numpy()
+    prev = np.r_[np.nan, c[:-1]]
+    if entry_mode == "4week":
+        return (c > hi_n) & (prev <= hi_n)
+    # crossover in the last 10 bars, fast still above slow, close breaks the 2-week high today
     fs = (fast > slow).to_numpy()
-    in_pos, entry, stop, last_cross, last_buy = False, np.nan, np.nan, -10**9, None
-    two_prev = False
-    for i in range(1, n):
-        if cu[i]:
-            last_cross = i
-        two = c[i] > hi2[i] if hi2[i] == hi2[i] else False
-        if entry_mode == "cross":
-            raw = cu[i]
-        elif entry_mode == "4week":
-            raw = hi_n[i] == hi_n[i] and c[i] > hi_n[i] and c[i - 1] <= hi_n[i]
-        else:  # crossover confirmed by a 2-week breakout
-            raw = (i - last_cross <= 10) and fs[i] and two and not two_prev
-        two_prev = two
-        if in_pos:
-            trail = (c[i] < lo_exit[i]) if entry_mode == "4week" else cd[i]
-            if c[i] < stop or trail:
-                in_pos = False
-            elif entry_mode == "4week" and lo_exit[i] == lo_exit[i]:
-                stop = max(stop, lo_exit[i])
-        elif raw and filter_ok[i] and adx_ok[i]:
-            in_pos, entry = True, c[i]
-            stop = min(lo_stop[i], c[i] * 0.999) if lo_stop[i] == lo_stop[i] else c[i] * 0.95
-            last_buy = i
-    return last_buy, entry, stop, in_pos
+    recent = pd.Series(cross_up).rolling(11, min_periods=1).max().to_numpy() > 0
+    two = c > hi2
+    two_prev = np.r_[False, two[:-1]]
+    return recent & fs & two & ~two_prev
 
 
 def find_murphy(df: pd.DataFrame, cfg: ScanConfig, bench: Optional[pd.Series] = None) -> dict:
-    """Murphy positional trend-following (Strategy 4A) as a daily scan.
+    """Murphy positional trend-following (Strategy 4A) as a daily scan, entries only.
 
     Weekly filter (completed weeks): price > rising 40-week SMA, and/or weekly
     MACD > signal. Entry on the daily chart: 10/50 SMA crossover, the 4-week
     rule (close above the high of the last 4 full weeks), or a crossover
-    confirmed by a 2-week breakout. Initial stop below the 2-week low.
-    A stock is listed when a BUY fired in the last ``murphy_signal_days``
-    sessions and the position is still open.
+    confirmed by a 2-week breakout. A stock is listed when an entry that
+    passed the filter fired in the last ``murphy_signal_days`` sessions.
+
+    No stop-loss is computed: where to place it is the trader's own decision.
     """
     out = {"murphy": False}
     if len(df) < 300:
@@ -556,14 +597,17 @@ def find_murphy(df: pd.DataFrame, cfg: ScanConfig, bench: Optional[pd.Series] = 
     labels = {"cross": f"{cfg.murphy_fast}/{cfg.murphy_slow} crossover",
               "4week": f"{cfg.murphy_entry_weeks}-week rule",
               "cross2week": "Crossover + 2-week breakout"}
-    n, best = len(df), None
+    n, best_i, how = len(df), None, []
+    first = max(0, n - cfg.murphy_signal_days)
     for mode in modes:
-        i, entry, stop, open_ = _murphy_run(c, fast, slow, w, mode, filt, adx_ok)
-        if i is not None and open_ and n - 1 - i < cfg.murphy_signal_days:
-            if best is None or i > best[0]:
-                best = (i, entry, stop, [labels[mode]])
-            elif i == best[0]:
-                best[3].append(labels[mode])
+        sig = _murphy_entries(c, fast, slow, w, mode) & filt & adx_ok
+        hits = np.flatnonzero(sig[first:])
+        if len(hits):
+            i = first + int(hits[-1])
+            if best_i is None or i > best_i:
+                best_i, how = i, [labels[mode]]
+            elif i == best_i:
+                how.append(labels[mode])
 
     last = w.iloc[-1]
     close = float(c.iloc[-1])
@@ -586,16 +630,14 @@ def find_murphy(df: pd.DataFrame, cfg: ScanConfig, bench: Optional[pd.Series] = 
         adx14=round(float(ax.iloc[-1]), 1),
         murphy_rs_score=round(float(rs_score), 1) if rs_score == rs_score else np.nan,
     )
-    if best:
-        i, entry, stop, how = best
+    if best_i is not None:
+        entry = float(c.iloc[best_i])
         out.update(
             murphy=True,
             murphy_signal=", ".join(how),
-            murphy_signal_date=df.index[i].date().isoformat(),
-            murphy_days_ago=int(n - 1 - i),
-            murphy_entry=round(float(entry), 2),
-            murphy_stop=round(float(stop), 2),
-            murphy_risk_pct=round((entry - stop) / entry * 100, 2),
+            murphy_signal_date=df.index[best_i].date().isoformat(),
+            murphy_days_ago=int(n - 1 - best_i),
+            murphy_entry=round(entry, 2),
             murphy_pct_from_entry=round((close / entry - 1) * 100, 2),
         )
     return out
@@ -717,19 +759,19 @@ SCREEN_COLUMNS = {
                        "vol_ratio", "turnover_cr"],
     "VCP": ["symbol", "industry", "close", "rs_rating", "vcp_pivot",
             "vcp_pct_from_pivot", "vcp_contractions", "vcp_depths", "vcp_base_days",
-            "vol_dryup", "vol_ratio", "rs_line_new_high", "turnover_cr"],
+            "vol_dryup", "vol_ratio", "rs_line_new_high", "turnover_cr", "pct_from_52w_high", "pct_above_52w_low"],
     "Blue Sky": ["symbol", "industry", "close", "rs_rating", "ath", "pct_from_ath",
-                 "new_ath_recent", "vol_ratio", "rs_line_new_high", "turnover_cr"],
+                 "new_ath_recent", "vol_ratio", "rs_line_new_high", "turnover_cr", "pct_from_52w_high", "pct_above_52w_low"],
     "Multi-Year Base": ["symbol", "industry", "close", "rs_rating", "myb_pivot",
                         "myb_pct_from_pivot", "myb_base_years", "myb_depth",
-                        "vol_ratio", "turnover_cr"],
+                        "vol_ratio", "turnover_cr", "pct_from_52w_high", "pct_above_52w_low"],
     "Murphy": ["symbol", "industry", "close", "rs_rating", "murphy_signal",
-               "murphy_signal_date", "murphy_days_ago", "murphy_entry", "murphy_stop",
-               "murphy_risk_pct", "murphy_pct_from_entry", "murphy_sma40w",
-               "murphy_weekly_macd_ok", "adx14", "murphy_rs_score", "turnover_cr"],
+               "murphy_signal_date", "murphy_days_ago", "murphy_entry",
+               "murphy_pct_from_entry", "murphy_sma40w",
+               "murphy_weekly_macd_ok", "adx14", "murphy_rs_score", "turnover_cr", "pct_from_52w_high", "pct_above_52w_low"],
     "IPO Base": ["symbol", "industry", "close", "listed_days", "ipo_high",
                  "ipo_pct_from_high", "ipo_base_days", "ipo_depth", "vol_ratio",
-                 "turnover_cr"],
+                 "turnover_cr", "pct_from_52w_high", "pct_above_52w_low"],
 }
 
 
@@ -888,7 +930,7 @@ def plot_stock(symbol: str, data: Dict[str, pd.DataFrame], result: Optional[Scan
             for key, flag, lbl, c in (("vcp_pivot", "vcp", "VCP pivot", "#e66101"),
                                       ("myb_pivot", "multiyear_base", "Multi-year high", "#5e3c99"),
                                       ("ipo_high", "ipo_base", "IPO high", "#008837"),
-                                      ("murphy_stop", "murphy", "Stop (2-week low)", "#b2182b")):
+                                      ("murphy_entry", "murphy", "Murphy entry", "#b2182b")):
                 val = r.get(key, np.nan)
                 if not bool(r.get(flag, False)) or val != val:
                     continue

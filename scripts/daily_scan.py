@@ -53,7 +53,7 @@ def _series(s: pd.Series) -> list:
     return [_clean(x) for x in s.to_numpy()]
 
 
-def chart_payload(sym: str, df: pd.DataFrame, result: ibs.ScanResult) -> dict:
+def chart_payload(sym: str, df: pd.DataFrame, result: ibs.ScanResult, fund: dict = None) -> dict:
     full = df
     tail = full.tail(CHART_BARS)
     c = full["Close"]
@@ -67,7 +67,14 @@ def chart_payload(sym: str, df: pd.DataFrame, result: ibs.ScanResult) -> dict:
     for k in (10, 50, 150, 200):
         payload[f"sma{k}"] = _series(c.rolling(k).mean().tail(CHART_BARS))
     rl = ibs.rs_line(c, result.benchmark)
-    payload["rs"] = _series(rl.reindex(tail.index)) if rl is not None else None
+    if rl is not None:
+        # price / index is tiny (e.g. 0.015) - rebase to 100 at the start of the
+        # window so two-decimal rounding keeps the line's detail
+        r = rl.reindex(tail.index)
+        base = r.dropna().iloc[0] if r.notna().any() else np.nan
+        payload["rs"] = _series(r / base * 100) if base == base and base else None
+    else:
+        payload["rs"] = None
 
     row = result.metrics.loc[result.metrics["symbol"] == sym].iloc[0]
     levels = []
@@ -75,19 +82,29 @@ def chart_payload(sym: str, df: pd.DataFrame, result: ibs.ScanResult) -> dict:
                              ("myb_pivot", "multiyear_base", "Multi-year high"),
                              ("ipo_high", "ipo_base", "IPO high"),
                              ("ath", "bluesky", "All-time high"),
-                             ("murphy_entry", "murphy", "Murphy entry"),
-                             ("murphy_stop", "murphy", "Stop (2-week low)")):
+                             ("murphy_entry", "murphy", "Murphy entry")):
         val = row.get(key)
         if bool(row.get(flag, False)) and val == val and val is not None:
             levels.append({"label": label, "price": _clean(val)})
     payload["levels"] = levels
     payload["screens"] = [n for n, t in result.screens.items()
                           if not t.empty and sym in set(t["symbol"])]
+    hi52 = float(full["High"].tail(252).max()); lo52 = float(full["Low"].tail(252).min())
+    payload["hi52"], payload["lo52"] = _clean(hi52), _clean(lo52)
+    payload["fund"] = {k: _clean(v) for k, v in fund.get(sym, {}).items()} if fund else {}
     return payload
 
 
 def write_site_data(result: ibs.ScanResult, data: dict, out_dir: str,
-                    universe_name: str, benchmark_name: str) -> dict:
+                    universe_name: str, benchmark_name: str, fund: dict = None) -> dict:
+    fund = fund or {}
+    # market cap on every row; fill a missing industry from Yahoo's
+    for t in result.screens.values():
+        if t.empty:
+            continue
+        t["market_cap_cr"] = t["symbol"].map(lambda s: fund.get(s, {}).get("market_cap_cr"))
+        miss = t["industry"].fillna("") == ""
+        t.loc[miss, "industry"] = t.loc[miss, "symbol"].map(lambda s: fund.get(s, {}).get("yf_industry", ""))
     charts_dir = os.path.join(out_dir, "charts")
     if os.path.isdir(charts_dir):
         shutil.rmtree(charts_dir)          # drop charts of stocks no longer listed
@@ -96,7 +113,7 @@ def write_site_data(result: ibs.ScanResult, data: dict, out_dir: str,
     matched = sorted({s for t in result.screens.values() if not t.empty for s in t["symbol"]})
     for sym in matched:
         with open(os.path.join(charts_dir, f"{sym}.json"), "w") as f:
-            json.dump(chart_payload(sym, data[sym], result), f, separators=(",", ":"))
+            json.dump(chart_payload(sym, data[sym], result, fund), f, separators=(",", ":"))
 
     data_date = max(df.index[-1] for df in data.values()).date().isoformat()
     latest = {
@@ -116,6 +133,32 @@ def write_site_data(result: ibs.ScanResult, data: dict, out_dir: str,
     with open(os.path.join(out_dir, "latest.json"), "w") as f:
         json.dump(latest, f, separators=(",", ":"))
     return latest
+
+
+def write_heatmap(data: dict, fund: dict, out_dir: str, members: dict) -> dict:
+    """NIFTY 50 / NIFTY Next 50 heatmap: % change over 1 day, 1 week, 1 month, sized by market cap."""
+    def chg(c, k):
+        return _clean((c.iloc[-1] / c.iloc[-1 - k] - 1) * 100) if len(c) > k else None
+    out = {"generated_at": datetime.now(IST).isoformat(timespec="minutes"), "indices": {}}
+    dates = []
+    for idx, uni in members.items():
+        rows = []
+        for sym, ind in zip(uni["symbol"], uni["industry"]):
+            df = data.get(sym)
+            if df is None or len(df) < 2:
+                continue
+            c = df["Close"]
+            dates.append(df.index[-1])
+            f = fund.get(sym, {})
+            rows.append({"symbol": sym, "name": f.get("name", ""), "industry": ind or f.get("yf_industry", ""),
+                         "close": _clean(float(c.iloc[-1])), "d1": chg(c, 1), "w1": chg(c, 5), "m1": chg(c, 21),
+                         "m3": chg(c, 63), "mcap_cr": f.get("market_cap_cr"),
+                         "turnover_cr": _clean(float((c * df["Volume"]).tail(20).mean()) / 1e7)})
+        out["indices"][idx] = rows
+    out["data_date"] = max(dates).date().isoformat() if dates else None
+    with open(os.path.join(out_dir, "heatmap.json"), "w") as fh:
+        json.dump(out, fh, separators=(",", ":"))
+    return out
 
 
 def load_universe(name: str, cache_path: str) -> pd.DataFrame:
@@ -149,7 +192,30 @@ def main():
         sys.exit(f"Only {len(data)}/{len(uni)} stocks downloaded - aborting so the site keeps yesterday's data.")
     bench = ibs.download_benchmark(args.benchmark, period=args.period)
     result = ibs.scan(data, ibs.ScanConfig(), uni, bench)
-    latest = write_site_data(result, data, args.out, args.universe, args.benchmark)
+
+    # heatmap members (NIFTY 50 and NIFTY Next 50); download any not already loaded
+    members = {}
+    import warnings
+    for idx in ("NIFTY50", "NIFTYNEXT50"):
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            m = ibs.get_universe(idx)
+        if any("fallback" in str(x.message) for x in w):
+            print("heatmap list unavailable:", idx)   # don't show the wrong stocks
+            continue
+        members[idx] = m
+    missing = sorted({s for m in members.values() for s in m["symbol"]} - set(data))
+    if missing:
+        data.update(ibs.download_prices(missing, period="1y", verbose=False))
+
+    matched = sorted({s for t in result.screens.values() if not t.empty for s in t["symbol"]})
+    heat_syms = sorted({s for m in members.values() for s in m["symbol"]})
+    print(f"Fetching fundamentals for {len(set(matched) | set(heat_syms))} stocks...")
+    fund = ibs.fetch_fundamentals(sorted(set(matched) | set(heat_syms)))
+    print(f"  got data for {sum(1 for v in fund.values() if v)} stocks")
+
+    latest = write_site_data(result, data, args.out, args.universe, args.benchmark, fund)
+    write_heatmap(data, fund, args.out, members)
     print(f"Scan for {latest['data_date']}:")
     print(result.summary().to_string(index=False))
 

@@ -248,3 +248,39 @@ canvas.mini { width: 100%; height: 340px; display: block; touch-action: pan-y; c
 @media (prefers-reduced-motion: reduce) {
   .chart-panel { transition: none; }
 }
+
+/* Market cap, 52w range, fundamentals */
+.chart-head { position: relative; }
+.chart-mcap { margin-left: auto; text-align: right; font-size: 12px; color: var(--ink-3); line-height: 1.3; white-space: nowrap; }
+.chart-mcap b { display: block; font: 700 17px/1.2 var(--display); color: var(--ink); }
+.card-mcap { margin-left: auto; font-size: 12.5px; font-weight: 600; color: var(--ink); white-space: nowrap; }
+.card-hilo { margin-top: -2px; color: var(--ink-3); }
+.fund { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--grid); }
+.fund h3 { margin: 0 0 8px; font: 700 15px/1.3 var(--display); }
+.fund h3 span { font: 400 13px/1.3 var(--body); color: var(--ink-3); margin-left: 6px; }
+.fund dl { margin: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px 16px; }
+.fund dt { font-size: 12px; color: var(--ink-3); }
+.fund dd { margin: 1px 0 0; font-size: 14px; font-weight: 600; color: var(--ink); }
+.fund-src { margin: 10px 0 0; font-size: 11.5px; color: var(--ink-3); }
+
+/* Heatmap link */
+.heat-link { display: inline-flex; align-items: center; gap: 8px; margin-top: 12px; font-size: 13.5px; font-weight: 600; color: var(--ink); text-decoration: none; padding: 6px 10px 6px 6px; border: 1px solid var(--grid); border-radius: 8px; background: var(--surface); }
+.heat-link:hover { border-color: var(--ink-3); }
+.heat-swatch { display: grid; grid-template-columns: repeat(3, 8px); grid-template-rows: repeat(2, 8px); gap: 2px; }
+.heat-swatch i { display: block; border-radius: 1.5px; }
+.heat-swatch i:nth-child(1) { background: #1E8A5A; } .heat-swatch i:nth-child(2) { background: #6CC08B; }
+.heat-swatch i:nth-child(3) { background: #C23B33; } .heat-swatch i:nth-child(4) { background: #E58A84; }
+.heat-swatch i:nth-child(5) { background: #3FA36F; } .heat-swatch i:nth-child(6) { background: #8a94a6; }
+
+/* Murphy TradingView indicator */
+.pine { margin: 28px 0 0; padding: 20px 22px; background: var(--surface); border: 1px solid var(--grid); border-left: 4px solid var(--saffron); border-radius: 10px; max-width: 980px; }
+.pine h2 { margin: 0 0 8px; font: 800 22px/1.2 var(--display); }
+.pine p, .pine li { color: var(--ink-2); font-size: 14px; max-width: 80ch; }
+.pine ol { padding-left: 20px; margin: 8px 0; }
+.pine .advice { color: var(--ink); background: var(--saffron-wash); padding: 8px 12px; border-radius: 8px; }
+.pine-actions { display: flex; align-items: center; gap: 16px; margin: 12px 0; }
+.pine-actions a { font-size: 14px; color: var(--ink-2); }
+.btn-primary { appearance: none; border: 0; border-radius: 8px; background: var(--ink); color: var(--paper); font: 600 14px/1 var(--body); padding: 10px 16px; cursor: pointer; }
+.btn-primary:disabled { opacity: .5; cursor: default; }
+.pine details summary { cursor: pointer; font-size: 14px; color: var(--ink-2); }
+.pine pre { max-height: 420px; overflow: auto; background: var(--paper); border: 1px solid var(--grid); border-radius: 8px; padding: 12px; font-size: 12px; line-height: 1.45; }

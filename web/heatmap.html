@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>NIFTY 50 and NIFTY Next 50 heatmap – India Base Scanner</title>
+  <meta name="description" content="Heatmap of NIFTY 50 and NIFTY Next 50 stocks by sector, sized by market cap and coloured by 1-day, 1-week, 1-month or 3-month change. Updated after every close.">
+  <meta name="theme-color" content="#15233F">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2315233F'/%3E%3Cpath d='M6 22h6l3-9 3 5 3-7 5 11' fill='none' stroke='%23E39B2D' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Public+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="heatmap.css">
+</head>
+<body>
+  <header class="top">
+    <a class="brand" href="/" aria-label="India Base Scanner home">
+      <svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="7"/><path d="M6 22h6l3-9 3 5 3-7 5 11"/></svg>
+      <span>India Base Scanner</span>
+    </a>
+    <nav class="links">
+      <a href="/">Today's setups</a>
+      <a href="https://github.com/tmmity3-max/india-base-scanner" target="_blank" rel="noopener">GitHub</a>
+    </nav>
+  </header>
+
+  <main>
+    <section class="intro">
+      <h1 id="hmTitle">NIFTY 50 heatmap</h1>
+      <p id="hmMeta" class="meta">Loading…</p>
+    </section>
+
+    <div class="hm-tools">
+      <div class="seg" role="group" aria-label="Index">
+        <button type="button" data-index="NIFTY50" aria-pressed="true">NIFTY 50</button>
+        <button type="button" data-index="NIFTYNEXT50" aria-pressed="false">NIFTY Next 50</button>
+        <button type="button" data-index="BOTH" aria-pressed="false">Both</button>
+      </div>
+      <div class="seg" role="group" aria-label="Period">
+        <button type="button" data-period="d1" aria-pressed="true">1 day</button>
+        <button type="button" data-period="w1" aria-pressed="false">1 week</button>
+        <button type="button" data-period="m1" aria-pressed="false">1 month</button>
+        <button type="button" data-period="m3" aria-pressed="false">3 months</button>
+      </div>
+      <div class="seg" role="group" aria-label="Tile size">
+        <span class="seg-label">Size by</span>
+        <button type="button" data-size="mcap" aria-pressed="true">Market cap</button>
+        <button type="button" data-size="equal" aria-pressed="false">Equal</button>
+      </div>
+      <div class="hm-legend" id="hmLegend" aria-hidden="true"></div>
+    </div>
+
+    <div class="hm-stats" id="hmStats"></div>
+    <div class="hm" id="hm" role="img" aria-label="Heatmap"></div>
+    <p class="hm-hint">Tiles are grouped by sector. Hover for details; click a tile to open the stock on TradingView.</p>
+    <div class="hm-tip" id="hmTip" hidden></div>
+  </main>
+
+  <footer class="foot">
+    <p><strong>Not investment advice.</strong> End-of-day data from Yahoo Finance, which can be delayed or wrong. Market caps are approximate.</p>
+  </footer>
+
+  <script src="heatmap.js"></script>
+</body>
+</html>

@@ -102,7 +102,7 @@ def test_murphy():
     out = ibs.find_murphy(murphy_stock(), ibs.ScanConfig())
     assert out["murphy"], out
     assert out["murphy_filter_ok"] and out["murphy_days_ago"] < 5
-    assert out["murphy_stop"] < out["murphy_entry"]
+    assert "murphy_stop" not in out and out["murphy_entry"] > 0
 
 
 def test_murphy_weekly_no_lookahead():

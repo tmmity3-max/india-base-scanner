@@ -18,7 +18,7 @@ No installation, no account, no paid data. Open the notebook, click *Run all*, a
 | **Blue Sky** | At or breaking out to an **all-time high**, so there is no overhead supply |
 | **Multi-Year Base** | Breaking out of a high that held for **2+ years** |
 | **IPO Base** | Recent listings basing just under their post-listing high |
-| **Murphy** | John Murphy's positional trend-following: above a rising 40-week SMA, then a fresh 10/50 crossover, 4-week-rule breakout, or crossover + 2-week breakout, with a stop below the 2-week low |
+| **Murphy** | John Murphy's positional trend-following: above a rising 40-week SMA, then a fresh 10/50 crossover, 4-week-rule breakout, or crossover + 2-week breakout. Entries only |
 
 Every threshold is a **dial** in the notebook form. Change it, re-run, and the re-scan takes seconds without downloading again.
 
@@ -27,6 +27,7 @@ Every threshold is a **dial** in the notebook form. Change it, re-run, and the r
 - **RS rating (1-99)** ranked against the liquid stocks you scan
 - **RS line vs NIFTY 50 or NIFTY 500** (switchable), with a "new 52-week high" flag
 - **Charts**: candles, 50/150/200 SMAs, pivot lines, volume and the RS line
+- **Market cap and fundamentals** (P/E, P/B, ROE, debt/equity, margins, growth, dividend yield) from Yahoo Finance, plus distance from the 52-week high and low
 - **Excel export**: one sheet per screen, plus your settings and every metric
 - Universes: NIFTY 50 / 100 / 200 / 500, Midcap 150, Smallcap 250, Microcap 250, all NSE EQ stocks, or your own list
 
@@ -40,6 +41,23 @@ A free website shows the latest scan. It is updated automatically every weekday 
 - Charts zoom and pan like TradingView (scroll, drag, pinch, 3M/6M/1Y/2Y), and a *Charts only* view shows every match as a grid.
 
 To host your own copy, import this repo on [Vercel](https://vercel.com/new), set **Root Directory** to `web` and **Framework Preset** to *Other*, then click Deploy.
+
+## Free TradingView indicator
+
+[`pine/murphy_trend_following.pine`](pine/murphy_trend_following.pine) is the Murphy screen as a TradingView indicator for daily charts. It has the weekly 40-week SMA filter (completed weeks, no repainting), ENTRY labels for the 10/50 crossover, the 4-week rule or a crossover with a 2-week breakout, an optional ADX filter, a weekly MACD warning, and an RS line against NIFTY 50, NIFTY 500 or any index.
+
+**To add it to TradingView:**
+1. Open [the file](pine/murphy_trend_following.pine), click **Raw**, and copy everything. You can also use the *Copy code* button on the website's Murphy screen.
+2. In TradingView, open a **daily** chart and click **Pine Editor** at the bottom.
+3. Delete what's in the editor, paste the code, then click **Add to chart**. Click **Save** to keep it under *My scripts*.
+4. Open the indicator settings (gear icon) to choose the entry method, the weekly filter, the ADX filter and the RS benchmark.
+5. Optional: create an alert on **Murphy trend: ENTRY** to be notified of new signals.
+
+> The indicator marks **entries only**. It doesn't suggest a stop-loss or an exit. Your stop-loss, position size and risk are your own choice and your own responsibility.
+
+## Heatmap
+
+The website has a heatmap of **NIFTY 50** and **NIFTY Next 50** stocks, grouped by sector, sized by market cap and coloured by 1-day, 1-week, 1-month or 3-month change. Click a tile to open the stock on TradingView.
 
 ## Quick start
 
@@ -111,10 +129,9 @@ Based on John Murphy's *Technical Analysis of the Financial Markets* (moving ave
 | Entry: crossover | 10-day SMA crosses above the 50-day SMA |
 | Entry: 4-week rule | Close breaks above the high of the last 4 full weeks |
 | Entry: crossover + 2-week breakout | Within 10 days of a crossover, close breaks the last 2 full weeks' high |
-| Stop and exit | Initial stop below the 2-week low; exit on the opposite crossover, or (4-week rule) a close below the 2-week low, which also trails the stop |
 | Optional | ADX(14) ≥ 20 trend filter; weekly MACD histogram turning down as an early warning |
 
-The screen lists stocks whose BUY signal fired in the last 5 sessions and is still open, with entry, stop and risk %. All settings are `murphy_*` in `ScanConfig`.
+The screen lists stocks whose entry signal fired in the last 5 sessions, with the entry price and how far price has moved since. **No stop-loss or exit is suggested: where you place your stop-loss is your own choice and responsibility.** All settings are `murphy_*` in `ScanConfig`.
 </details>
 
 <details>
@@ -154,7 +171,7 @@ Suggestions and pull requests are welcome. Open an issue first for big changes.
 
 ## Disclaimer
 
-This project is for **education and research only**. It is **not investment advice** and the author is not a SEBI-registered adviser or research analyst. A stock appearing in a screen is the output of a fixed rule, not a recommendation. Trading and investing carry risk of loss. Verify everything independently.
+This project is for **education and research only**. It is **not investment advice** and the author is not a SEBI-registered adviser or research analyst. A stock appearing in a screen is the output of a fixed rule, not a recommendation. No screen or indicator suggests a stop-loss: your stop-loss and risk are your own responsibility. Trading and investing carry risk of loss. Verify everything independently.
 
 ## License
 
