@@ -182,7 +182,6 @@
       const cv = this.cv;
       cv.addEventListener("wheel", (e) => {
         if (!this.c) return;
-        if (this.mini && !(e.ctrlKey || e.metaKey)) return; // let the page scroll in the grid
         e.preventDefault();
         if (this.inPriceAxis(e.offsetX, e.offsetY)) { this.zoomY(e.deltaY > 0 ? 1.08 : 1 / 1.08); return; }
         if (Math.abs(e.deltaX) > Math.abs(e.deltaY) || e.shiftKey) {
@@ -658,7 +657,13 @@
       for (const c of cols) {
         const td = document.createElement("td");
         const [text, cls] = fmt(r[c], COLS[c][1]);
-        td.textContent = text;
+        if (c === "symbol") {
+          const a = document.createElement("a");
+          a.href = tvUrl(r.symbol); a.target = "_blank"; a.rel = "noopener";
+          a.textContent = text; a.className = "tv-sym"; a.title = `Open ${r.symbol} on TradingView`;
+          a.addEventListener("click", (e) => e.stopPropagation());
+          td.appendChild(a);
+        } else td.textContent = text;
         td.className = [cls, COLS[c][1] === "txt" ? "txt" : "", c === "symbol" ? "sym" : "", c === "industry" ? "ind" : ""].join(" ").trim();
         if (c === "industry") td.title = r[c] || "";
         row.appendChild(td);
@@ -676,7 +681,11 @@
     writeHash();
     for (const tr of $("table").tBodies[0].rows) tr.setAttribute("aria-selected", tr.dataset.symbol === sym ? "true" : "false");
     if (userAction) $("chartPanel").classList.add("open");
-    $("chartTitle").textContent = sym;
+    $("chartTitle").innerHTML = "";
+    const ta = document.createElement("a");
+    ta.href = tvUrl(sym); ta.target = "_blank"; ta.rel = "noopener"; ta.textContent = sym;
+    ta.title = `Open ${sym} on TradingView`;
+    $("chartTitle").appendChild(ta);
     $("chartSub").textContent = "Loading chart…";
     let c;
     try { c = await loadChart(sym); }
@@ -704,9 +713,10 @@
     $("chartSub").textContent = "Click any row to see its chart.";
     mainChart.clear();
   }
+  function tvUrl(sym) { return `https://www.tradingview.com/chart/?symbol=NSE%3A${encodeURIComponent(sym)}`; }
   function tvLink(sym) {
     const a = document.createElement("a");
-    a.href = `https://www.tradingview.com/chart/?symbol=NSE%3A${encodeURIComponent(sym)}`;
+    a.href = tvUrl(sym);
     a.target = "_blank"; a.rel = "noopener"; a.textContent = "Open on TradingView";
     return a;
   }
@@ -734,6 +744,9 @@
         gridObserver.unobserve(en.target);
         const card = en.target, sym = card.dataset.symbol;
         const pc = new PriceChart(card.querySelector("canvas"), { mini: true });
+        card.querySelector('[data-act="in"]').addEventListener("click", () => pc.zoom(1 / 1.3));
+        card.querySelector('[data-act="out"]').addEventListener("click", () => pc.zoom(1.3));
+        card.querySelector('[data-act="reset"]').addEventListener("click", () => pc.reset());
         loadChart(sym).then((c) => pc.setData(c, { sma10: state.screen === "Murphy" }))
           .catch(() => { card.querySelector(".card-note").textContent = "Chart data missing - it will appear after the next scan."; });
       }
@@ -747,14 +760,21 @@
       const chg = r["chg_1d_%"];
       card.innerHTML = `
         <header class="card-head">
-          <button class="card-sym" type="button" title="Open with the table">${r.symbol}</button>
+          <a class="card-sym" href="${tvUrl(r.symbol)}" target="_blank" rel="noopener" title="Open ${r.symbol} on TradingView">${r.symbol}</a>
           <span class="card-px">₹${nf2.format(r.close)} ${chg != null ? `<span class="${chg >= 0 ? "pos" : "neg"}">${signed(chg)}%</span>` : ""}</span>
           ${r.rs_rating != null ? `<span class="card-rs">RS ${nf0.format(r.rs_rating)}</span>` : ""}
         </header>
         <p class="card-note">${[r.industry, keyFact(r)].filter(Boolean).join(". ")}</p>
-        <canvas class="mini" tabindex="0" role="img" aria-label="${r.symbol} chart"></canvas>`;
-      card.querySelector(".card-sym").addEventListener("click", () => { setView("table"); openStock(r.symbol, true); });
-      card.querySelector(".card-head").append(tvLink(r.symbol));
+        <canvas class="mini" tabindex="0" role="img" aria-label="${r.symbol} chart. Scroll to zoom, drag to move."></canvas>
+        <div class="card-tools">
+          <div class="zoom" role="group" aria-label="Zoom ${r.symbol}">
+            <button type="button" data-act="out" aria-label="Zoom out">−</button>
+            <button type="button" data-act="in" aria-label="Zoom in">+</button>
+            <button type="button" data-act="reset">Reset</button>
+          </div>
+          <button type="button" class="card-open">Open with table</button>
+        </div>`;
+      card.querySelector(".card-open").addEventListener("click", () => { setView("table"); openStock(r.symbol, true); window.scrollTo({ top: $("tools").offsetTop - 12 }); });
       frag.appendChild(card);
       gridObserver.observe(card);
     }

@@ -57,6 +57,8 @@ NSE_LISTS = {
     "MICROCAP250": _NSE_IDX + "ind_niftymicrocap250_list.csv",
     "ALL_EQ": "https://archives.nseindia.com/content/equities/EQUITY_L.csv",
 }
+# Index files that carry an Industry column, used to label ALL_EQ stocks.
+_INDUSTRY_SOURCES = ["ind_niftytotalmarket_list.csv", "ind_niftymicrocap250_list.csv"]
 
 # Yahoo Finance symbols for benchmarks used by the RS line.
 BENCHMARKS = {
@@ -83,6 +85,24 @@ _HEADERS = {
     ),
     "Accept": "text/csv,text/plain,*/*",
 }
+
+
+def _industry_map(requests) -> dict:
+    """Symbol -> industry from NSE index files (best effort, never raises)."""
+    mapping: dict = {}
+    for fname in _INDUSTRY_SOURCES:
+        for base in (_NSE_IDX, "https://www.niftyindices.com/IndexConstituent/"):
+            try:
+                r = requests.get(base + fname, headers=_HEADERS, timeout=30)
+                r.raise_for_status()
+                d = pd.read_csv(io.StringIO(r.text))
+                d.columns = [c.strip().upper() for c in d.columns]
+                for sym, ind in zip(d["SYMBOL"].astype(str).str.strip(), d["INDUSTRY"].astype(str)):
+                    mapping.setdefault(sym, ind.strip())
+                break
+            except Exception:
+                continue
+    return mapping
 
 
 def get_universe(name: str = "NIFTY500") -> pd.DataFrame:
@@ -118,7 +138,8 @@ def get_universe(name: str = "NIFTY500") -> pd.DataFrame:
         df.columns = [c.strip().upper() for c in df.columns]
         if key == "ALL_EQ":
             df = df[df["SERIES"].astype(str).str.strip() == "EQ"]
-            out = pd.DataFrame({"symbol": df["SYMBOL"].str.strip(), "industry": ""})
+            out = pd.DataFrame({"symbol": df["SYMBOL"].str.strip()})
+            out["industry"] = out["symbol"].map(_industry_map(requests)).fillna("")
         else:
             out = pd.DataFrame(
                 {
