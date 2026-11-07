@@ -56,13 +56,9 @@ def ipo_stock():
 
 
 def murphy_stock():
-    # Uptrend, a fresh up-leg, then a ~45% pullback to the 50 SMA on light volume,
-    # turning up over the last two bars
-    wp = [(0, 100), (380, 240), (25, 226), (30, 282), (12, 255), (2, 258)]
-    n = 1 + sum(b for b, _ in wp[1:])
-    vol = np.full(n, 1_000_000.0)
-    vol[-14:] = 650_000
-    return make_series(wp, noise=0.003, seed=5, volume=vol)
+    # Long uptrend, a two-month rest (10 SMA dips under 50 SMA), then a fresh
+    # breakout over the last few sessions while above the rising 40-week SMA
+    return make_series([(0, 100), (350, 230), (45, 205), (25, 212), (4, 240)], noise=0.004, seed=5)
 
 
 def downtrend_stock():
@@ -105,7 +101,18 @@ def test_ipo():
 def test_murphy():
     out = ibs.find_murphy(murphy_stock(), ibs.ScanConfig())
     assert out["murphy"], out
-    assert 33 <= out["murphy_retrace"] <= 66
+    assert out["murphy_filter_ok"] and out["murphy_days_ago"] < 5
+    assert out["murphy_stop"] < out["murphy_entry"]
+
+
+def test_murphy_weekly_no_lookahead():
+    # weekly values for a day must come from the previous completed week
+    df = murphy_stock()
+    w = ibs._weekly_on_daily(df, ibs.ScanConfig())
+    d = df.index[-1]
+    prev_week_end = (d.to_period("W-FRI").start_time - pd.Timedelta(days=1))
+    expected = df.loc[:prev_week_end, "High"].resample("W-FRI").max().tail(4).max()
+    assert abs(w["w_high_n"].iloc[-1] - expected) < 1e-9
 
 
 def test_murphy_not_in_downtrend():

@@ -18,7 +18,7 @@ No installation, no account, no paid data. Open the notebook, click *Run all*, a
 | **Blue Sky** | At or breaking out to an **all-time high**, so there is no overhead supply |
 | **Multi-Year Base** | Breaking out of a high that held for **2+ years** |
 | **IPO Base** | Recent listings basing just under their post-listing high |
-| **Murphy** | John Murphy's 10 Laws of Technical Trading: a 33–66% pullback in an uptrend, at the 50-day average, with RSI and MACD turning up, ADX ≥ 20 and lighter volume |
+| **Murphy** | John Murphy's positional trend-following: above a rising 40-week SMA, then a fresh 10/50 crossover, 4-week-rule breakout, or crossover + 2-week breakout, with a stop below the 2-week low |
 
 Every threshold is a **dial** in the notebook form. Change it, re-run, and the re-scan takes seconds without downloading again.
 
@@ -101,18 +101,20 @@ Listed 20-500 trading days ago, based at least 10 days below the post-listing hi
 </details>
 
 <details>
-<summary><b>Murphy: 10 Laws of Technical Trading</b></summary>
+<summary><b>Murphy: positional trend-following</b></summary>
 
-| Murphy's law | Rule in the scan |
+Based on John Murphy's *Technical Analysis of the Financial Markets* (moving averages, the weekly rule, MACD).
+
+| Part | Rule |
 |---|---|
-| 1, 2, 6: map the trend, trade with it, follow moving averages | Close > 200 SMA, 50 SMA > 200 SMA, 50 SMA rising over 10 bars |
-| 4: know how far to backtrack | Price has given back 33–66% of the last up-leg (swings of ≥ 6%) |
-| 3, 5: support and trendlines | Close within 5% of the 50-day SMA |
-| 7, 8: turning points and warning signs | RSI(14) between 38 and 62 and rising; MACD histogram rising |
-| 9: trending or not | ADX(14) ≥ 20 |
-| 10: confirm with volume | Average volume during the pullback ≤ the 50-day average |
+| Weekly filter (completed weeks, no repainting) | Close > 40-week SMA and the 40-week SMA rising over 4 weeks. Optional: weekly MACD > signal, or both |
+| Entry: crossover | 10-day SMA crosses above the 50-day SMA |
+| Entry: 4-week rule | Close breaks above the high of the last 4 full weeks |
+| Entry: crossover + 2-week breakout | Within 10 days of a crossover, close breaks the last 2 full weeks' high |
+| Stop and exit | Initial stop below the 2-week low; exit on the opposite crossover, or (4-week rule) a close below the 2-week low, which also trails the stop |
+| Optional | ADX(14) ≥ 20 trend filter; weekly MACD histogram turning down as an early warning |
 
-All thresholds are `murphy_*` settings in `ScanConfig`.
+The screen lists stocks whose BUY signal fired in the last 5 sessions and is still open, with entry, stop and risk %. All settings are `murphy_*` in `ScanConfig`.
 </details>
 
 <details>

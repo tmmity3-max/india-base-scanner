@@ -38,7 +38,7 @@ Free, open-source **base & breakout screens for NSE stocks**:
 | **Blue Sky** | Price at or breaking out to an **all-time high** - no overhead supply |
 | **Multi-Year Base** | Breaking out of a high that held for **2+ years** |
 | **IPO Base** | Recent listings basing just under their post-listing high |
-| **Murphy** | John Murphy's 10 laws: a 33-66% pullback in an uptrend at the 50-day average, RSI and MACD turning up, ADX ≥ 20, lighter volume |
+| **Murphy** | John Murphy's positional trend-following: price above a rising 40-week SMA, then a fresh 10/50 crossover, 4-week-rule breakout, or crossover + 2-week breakout. Stop below the 2-week low |
 
 **How to use:** `Runtime → Run all`, or run the cells one by one. Change the settings in the form and re-run the scan cell - no need to download again.
 
@@ -85,11 +85,13 @@ VCP_MAX_VOLUME_RATIO = 0.85  #@param {type:"number"}
 BLUESKY_MAX_BELOW_ATH = 3  #@param {type:"number"}
 MYB_MIN_BASE_YEARS = 2  #@param {type:"number"}
 IPO_MAX_DAYS = 500  #@param {type:"integer"}
-#@markdown **Murphy (10 laws pullback)**
-MURPHY_MIN_RETRACE = 33  #@param {type:"number"}
-MURPHY_MAX_RETRACE = 66  #@param {type:"number"}
-MURPHY_MAX_FROM_SMA50 = 5  #@param {type:"number"}
-MURPHY_MIN_ADX = 20  #@param {type:"number"}
+#@markdown **Murphy trend-following**
+MURPHY_FILTER = "sma40"  #@param ["sma40", "macd", "both", "none"]
+MURPHY_ENTRY = "any"  #@param ["any", "cross", "4week", "cross2week"]
+MURPHY_FAST = 10  #@param {type:"integer"}
+MURPHY_SLOW = 50  #@param {type:"integer"}
+MURPHY_SIGNAL_DAYS = 5  #@param {type:"slider", min:1, max:20, step:1}
+MURPHY_USE_ADX = False  #@param {type:"boolean"}
 
 cfg = ibs.ScanConfig(
     min_price=MIN_PRICE, min_turnover_cr=MIN_TURNOVER_CR,
@@ -99,8 +101,8 @@ cfg = ibs.ScanConfig(
     vcp_max_below_pivot=VCP_MAX_BELOW_PIVOT, vcp_max_volume_ratio=VCP_MAX_VOLUME_RATIO,
     bluesky_max_below_ath=BLUESKY_MAX_BELOW_ATH, myb_min_base_years=MYB_MIN_BASE_YEARS,
     ipo_max_days=IPO_MAX_DAYS,
-    murphy_min_retrace=MURPHY_MIN_RETRACE, murphy_max_retrace=MURPHY_MAX_RETRACE,
-    murphy_max_from_sma50=MURPHY_MAX_FROM_SMA50, murphy_min_adx=MURPHY_MIN_ADX,
+    murphy_filter=MURPHY_FILTER, murphy_entry=MURPHY_ENTRY, murphy_fast=MURPHY_FAST,
+    murphy_slow=MURPHY_SLOW, murphy_signal_days=MURPHY_SIGNAL_DAYS, murphy_use_adx=MURPHY_USE_ADX,
 )
 result = ibs.scan(data, cfg, universe, bench)
 display(result.summary())
@@ -147,7 +149,7 @@ except ImportError:
 - **Blue Sky:** close within 3% of the all-time high, with at least 3 years of history.
 - **Multi-Year Base:** the highest high before the last 5 bars was set 2+ years ago, the base was no deeper than 60%, and price is now within 5% below or up to 10% above that old high.
 - **IPO Base:** listed 20-500 trading days ago, based 10+ days below the post-listing high with a depth of 35% or less, and now within 8% of that high.
-- **Murphy:** John Murphy's 10 Laws of Technical Trading as one scan. Trend (laws 1, 2, 6): close above the 200-day, 50-day above the 200-day and rising. Retracement (law 4): 33-66% of the last up-leg given back. Support (laws 3, 5): within 5% of the 50-day average. Turning points (laws 7, 8): RSI 38-62 and rising, MACD histogram rising. Trend strength (law 9): ADX ≥ 20. Volume (law 10): pullback volume below the 50-day average.
+- **Murphy:** John Murphy's positional trend-following. Weekly filter from completed weeks only (no repainting): price above a rising 40-week SMA (or weekly MACD above signal, or both). Daily entry: 10-day SMA crossing above the 50-day, the 4-week rule (close above the high of the last 4 full weeks), or a crossover confirmed by a 2-week breakout. Initial stop below the 2-week low; exit on the opposite crossover or the 2-week-low rule. Lists stocks whose BUY fired in the last 5 sessions and is still open.
 - **Liquidity:** every screen needs price ≥ ₹20 and 50-day average turnover ≥ ₹1 crore. RS is ranked among those liquid stocks only.
 - **vol_ratio:** today's volume ÷ 50-day average. Above 1.5 on a breakout day is a strong sign.
 

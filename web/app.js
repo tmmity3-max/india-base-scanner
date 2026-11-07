@@ -13,7 +13,7 @@
   const SCREENS = {
     "VCP": "Tightening pullbacks with volume drying up, close to the pivot. Sorted by RS rating.",
     "Blue Sky": "At or breaking out to an all-time high, with strong relative strength.",
-    "Murphy": "John Murphy's 10 laws: a 33–66% pullback in an uptrend, at the 50-day average, with RSI and MACD turning up on lighter volume.",
+    "Murphy": "John Murphy's trend-following: above a rising 40-week SMA, with a fresh 10/50 crossover, 4-week-rule breakout or crossover + 2-week breakout in the last 5 sessions. Newest signals first.",
     "Multi-Year Base": "Back at a high that held for two years or more. Sorted by base length.",
     "IPO Base": "Recent listings basing just under their post-listing high.",
     "Trend Template": "Every liquid stock in a Stage-2 uptrend with RS 70 or more. The pool the VCP screen draws from.",
@@ -37,10 +37,11 @@
     listed_days: ["Days listed", "int"], ipo_high: ["Listing high ₹", "num"],
     ipo_pct_from_high: ["From high %", "signed"], ipo_base_days: ["Base days", "int"],
     ipo_depth: ["Base depth %", "pct"],
-    murphy_retrace: ["Retrace %", "pct"], murphy_swing_high: ["Swing high ₹", "num"],
-    pct_from_sma50: ["From SMA 50 %", "signed"], rsi14: ["RSI", "num"], adx14: ["ADX", "num"],
-    macd_turning_up: ["MACD turning up", "bool"], murphy_pullback_bars: ["Pullback days", "int"],
-    murphy_pullback_vol: ["Pullback vol ×", "x"],
+    murphy_signal: ["Signal", "txt"], murphy_signal_date: ["Signal date", "txt"],
+    murphy_days_ago: ["Days ago", "int"], murphy_entry: ["Entry ₹", "num"], murphy_stop: ["Stop ₹", "num"],
+    murphy_risk_pct: ["Risk %", "pct"], murphy_pct_from_entry: ["From entry %", "signed"],
+    murphy_sma40w: ["40-week SMA ₹", "num"], murphy_weekly_macd_ok: ["Weekly MACD > signal", "bool"],
+    adx14: ["ADX", "num"], murphy_rs_score: ["RS score vs index %", "signed"],
   };
 
   const $ = (id) => document.getElementById(id);
@@ -105,30 +106,45 @@
       this.ctx = canvas.getContext("2d");
       this.mini = !!opts.mini;
       this.readout = opts.readout || null;
+      this.onScale = opts.onScale || null;   // called when auto/log changes
       this.c = null;
-      this.hover = -1;
+      this.hover = -1; this.hoverY = -1;
+      this.auto = true; this.log = false;
+      this.yLo = 0; this.yHi = 1;            // price range (in scale units) when auto is off
       this.pointers = new Map();
+      this.showSma10 = false;
       this.bind();
       new ResizeObserver(() => this.draw()).observe(canvas);
     }
 
-    setData(c) { this.c = c; this.hover = -1; this.reset(); }
+    setData(c, o = {}) {
+      this.c = c; this.hover = -1; this.showSma10 = !!o.sma10 && !!c.sma10;
+      this.auto = true; this.reset(); this.emit();
+    }
     clear() { this.c = null; this.draw(); }
+    emit() { if (this.onScale) this.onScale({ auto: this.auto, log: this.log }); }
 
     get n() { return this.c ? this.c.c.length : 0; }
     defaultBars() { return Math.min(this.n, this.mini ? 130 : 250); }
-
-    reset() { this.show(this.defaultBars()); }
+    reset() { this.auto = true; this.show(this.defaultBars()); this.emit(); }
     show(bars) {
       if (!this.c) return;
       bars = Math.min(this.n, bars);
-      this.end = this.n + 2;
-      this.start = this.end - bars - 2;
-      this.clamp(); this.draw();
+      this.end = this.n + 2; this.start = this.end - bars - 2;
+      this.auto = true; this.clampX(); this.draw(); this.emit();
     }
-    clamp() {
-      const n = this.n, minSpan = 15, maxSpan = n + 4;
-      let span = Math.max(minSpan, Math.min(maxSpan, this.end - this.start));
+    setAuto(v) { this.auto = v; this.draw(); this.emit(); }
+    setLog(v) {
+      // keep the same visible prices when switching scale type
+      const lo = this.inv(this.yLo), hi = this.inv(this.yHi);
+      this.log = v; this.yLo = this.fwd(lo); this.yHi = this.fwd(hi);
+      this.draw(); this.emit();
+    }
+    fwd(p) { return this.log ? Math.log(Math.max(p, 1e-6)) : p; }
+    inv(v) { return this.log ? Math.exp(v) : v; }
+
+    clampX() {
+      const n = this.n, span = Math.max(15, Math.min(n + 4, this.end - this.start));
       if (this.start < -2) this.start = -2;
       this.end = this.start + span;
       if (this.end > n + 8) { this.end = n + 8; this.start = this.end - span; }
@@ -139,12 +155,28 @@
       const span = this.end - this.start, a = this.start + span * anchor;
       const ns = Math.max(15, Math.min(this.n + 4, span * factor));
       this.start = a - ns * anchor; this.end = this.start + ns;
-      this.clamp(); this.draw();
+      this.clampX(); this.draw();
     }
-    pan(bars) { if (!this.c) return; this.start += bars; this.end += bars; this.clamp(); this.draw(); }
+    zoomY(factor) {  // stretch or squeeze the price scale around its middle
+      const mid = (this.yLo + this.yHi) / 2, half = (this.yHi - this.yLo) / 2 * factor;
+      this.yLo = mid - half; this.yHi = mid + half;
+      if (this.auto) { this.auto = false; this.emit(); }
+      this.draw();
+    }
+    pan(bars) { if (!this.c) return; this.start += bars; this.end += bars; this.clampX(); this.draw(); }
 
-    plotW() { return this.cv.clientWidth - (this.mini ? 46 : 62); }
+    axisW() { return this.mini ? 46 : 64; }
+    plotW() { return this.cv.clientWidth - this.axisW(); }
+    layout() {
+      const H = this.cv.clientHeight, hasRS = this.c && !!this.c.rs;
+      const dateH = 16, gap = this.mini ? 6 : 10;
+      const priceH = Math.round((H - dateH) * (hasRS ? 0.66 : 0.8));
+      const volH = Math.round((H - dateH) * (hasRS ? 0.14 : 0.2)) - gap;
+      const rsH = hasRS ? H - dateH - priceH - volH - gap * 2 : 0;
+      return { H, dateH, gap, priceH, volH, rsH, hasRS };
+    }
     xToIndex(x) { return Math.floor(this.start + x / this.plotW() * (this.end - this.start)); }
+    inPriceAxis(x, y) { return x > this.plotW() && y < this.layout().priceH; }
 
     bind() {
       const cv = this.cv;
@@ -152,6 +184,7 @@
         if (!this.c) return;
         if (this.mini && !(e.ctrlKey || e.metaKey)) return; // let the page scroll in the grid
         e.preventDefault();
+        if (this.inPriceAxis(e.offsetX, e.offsetY)) { this.zoomY(e.deltaY > 0 ? 1.08 : 1 / 1.08); return; }
         if (Math.abs(e.deltaX) > Math.abs(e.deltaY) || e.shiftKey) {
           const d = e.shiftKey ? e.deltaY : e.deltaX;
           this.pan(d / this.plotW() * (this.end - this.start));
@@ -164,47 +197,72 @@
         if (!this.c) return;
         cv.setPointerCapture(e.pointerId);
         this.pointers.set(e.pointerId, { x: e.offsetX, y: e.offsetY });
-        this.drag = { x: e.offsetX, start: this.start, end: this.end, moved: false };
+        if (this.inPriceAxis(e.offsetX, e.offsetY) && this.pointers.size === 1) {
+          this.axisDrag = { y: e.offsetY, lo: this.yLo, hi: this.yHi };
+          return;
+        }
+        this.drag = { x: e.offsetX, y: e.offsetY, start: this.start, end: this.end, lo: this.yLo, hi: this.yHi };
         if (this.pointers.size === 2) this.pinch = { d: this.pinchDist(), start: this.start, end: this.end, mid: this.pinchMid() };
         cv.classList.add("grabbing");
       });
       cv.addEventListener("pointermove", (e) => {
         if (!this.c) return;
-        if (this.pointers.has(e.pointerId)) this.pointers.set(e.pointerId, { x: e.offsetX, y: e.offsetY });
+        const x = e.offsetX, y = e.offsetY;
+        if (this.pointers.has(e.pointerId)) this.pointers.set(e.pointerId, { x, y });
+        cv.classList.toggle("on-axis", this.inPriceAxis(x, y));
+
+        if (this.axisDrag) {   // drag the price scale: down squeezes, up stretches
+          const f = Math.exp((y - this.axisDrag.y) / 160);
+          const mid = (this.axisDrag.lo + this.axisDrag.hi) / 2, half = (this.axisDrag.hi - this.axisDrag.lo) / 2 * f;
+          this.yLo = mid - half; this.yHi = mid + half;
+          if (this.auto) { this.auto = false; this.emit(); }
+          this.draw();
+          return;
+        }
         if (this.pinch && this.pointers.size === 2) {
           const f = this.pinch.d / Math.max(10, this.pinchDist());
-          const span = (this.pinch.end - this.pinch.start), a = this.pinch.mid / this.plotW();
+          const span = this.pinch.end - this.pinch.start, a = this.pinch.mid / this.plotW();
           const ns = Math.max(15, Math.min(this.n + 4, span * f));
           const anchorIdx = this.pinch.start + span * a;
           this.start = anchorIdx - ns * a; this.end = this.start + ns;
-          this.clamp(); this.draw();
+          this.clampX(); this.draw();
           return;
         }
         if (this.drag && this.pointers.size === 1) {
-          const dx = e.offsetX - this.drag.x;
-          if (Math.abs(dx) > 3) this.drag.moved = true;
-          const per = (this.drag.end - this.drag.start) / this.plotW();
+          const dx = x - this.drag.x, per = (this.drag.end - this.drag.start) / this.plotW();
           this.start = this.drag.start - dx * per; this.end = this.drag.end - dx * per;
-          this.clamp();
+          this.clampX();
+          if (!this.auto) {   // with a fixed scale, dragging also moves the chart up and down
+            const dy = y - this.drag.y, pp = (this.drag.hi - this.drag.lo) / this.layout().priceH;
+            this.yLo = this.drag.lo + dy * pp; this.yHi = this.drag.hi + dy * pp;
+          }
         }
-        const i = e.offsetX > this.plotW() ? -1 : this.xToIndex(e.offsetX);
-        this.hover = i; this.draw();
+        this.hover = x > this.plotW() ? -1 : this.xToIndex(x);
+        this.hoverY = y;
+        this.draw();
       });
       const up = (e) => {
         this.pointers.delete(e.pointerId);
         if (this.pointers.size < 2) this.pinch = null;
-        if (this.pointers.size === 0) { this.drag = null; cv.classList.remove("grabbing"); }
+        if (this.pointers.size === 0) { this.drag = null; this.axisDrag = null; cv.classList.remove("grabbing"); }
       };
       cv.addEventListener("pointerup", up);
       cv.addEventListener("pointercancel", up);
-      cv.addEventListener("pointerleave", (e) => { if (e.pointerType === "mouse") { this.hover = -1; this.draw(); } });
-      cv.addEventListener("dblclick", () => this.reset());
+      cv.addEventListener("pointerleave", (e) => { if (e.pointerType === "mouse") { this.hover = -1; this.hoverY = -1; this.draw(); } });
+      cv.addEventListener("dblclick", (e) => {
+        if (this.inPriceAxis(e.offsetX, e.offsetY)) this.setAuto(true);  // like TradingView: double-click the scale to reset it
+        else this.reset();
+      });
       cv.addEventListener("keydown", (e) => {
         const k = e.key;
         if (k === "+" || k === "=") this.zoom(1 / 1.25);
         else if (k === "-" || k === "_") this.zoom(1.25);
         else if (k === "ArrowLeft") this.pan(-(this.end - this.start) * 0.1);
         else if (k === "ArrowRight") this.pan((this.end - this.start) * 0.1);
+        else if (k === "ArrowUp") this.zoomY(1 / 1.1);
+        else if (k === "ArrowDown") this.zoomY(1.1);
+        else if (k === "a" || k === "A") this.setAuto(!this.auto);
+        else if (k === "l" || k === "L") this.setLog(!this.log);
         else if (k === "0") this.reset();
         else return;
         e.preventDefault();
@@ -225,37 +283,46 @@
 
       const mini = this.mini, n = this.n;
       const plotW = this.plotW(), axisX = plotW + 6;
-      const hasRS = !!c.rs;
-      const dateH = 16, gap = mini ? 6 : 10;
-      const priceH = Math.round((H - dateH) * (hasRS ? 0.66 : 0.8));
-      const volH = Math.round((H - dateH) * (hasRS ? 0.14 : 0.2)) - gap;
-      const rsH = hasRS ? H - dateH - priceH - volH - gap * 2 : 0;
+      const { dateH, gap, priceH, volH, rsH, hasRS } = this.layout();
       const span = this.end - this.start, step = plotW / span;
       const bw = Math.max(1, Math.min(14, step * 0.7));
       const X = (i) => (i - this.start + 0.5) * step;
       const i0 = Math.max(0, Math.floor(this.start)), i1 = Math.min(n - 1, Math.ceil(this.end));
       if (i1 < i0) return;
 
-      // price scale fits the visible bars (like TradingView's auto scale)
-      let lo = Infinity, hi = -Infinity, vMax = 0;
-      for (let i = i0; i <= i1; i++) { lo = Math.min(lo, c.l[i]); hi = Math.max(hi, c.h[i]); vMax = Math.max(vMax, c.v[i]); }
-      for (const lv of c.levels || []) if (lv.price > lo * 0.92 && lv.price < hi * 1.08) { lo = Math.min(lo, lv.price); hi = Math.max(hi, lv.price); }
-      const pad = (hi - lo) * 0.07 || hi * 0.05; lo -= pad; hi += pad;
-      const padT = 4;
-      const Y = (p) => padT + (hi - p) / (hi - lo) * (priceH - padT);
+      // price scale: auto fits the visible bars, otherwise stays where you put it
+      let vMax = 0;
+      for (let i = i0; i <= i1; i++) vMax = Math.max(vMax, c.v[i]);
+      if (this.auto) {
+        let lo = Infinity, hi = -Infinity;
+        for (let i = i0; i <= i1; i++) { lo = Math.min(lo, c.l[i]); hi = Math.max(hi, c.h[i]); }
+        for (const lv of c.levels || []) if (lv.price > lo * 0.92 && lv.price < hi * 1.08) { lo = Math.min(lo, lv.price); hi = Math.max(hi, lv.price); }
+        const L = this.fwd(lo), Hh = this.fwd(hi), pad = (Hh - L) * 0.07 || Math.abs(Hh) * 0.05;
+        this.yLo = L - pad; this.yHi = Hh + pad;
+      }
+      const yLo = this.yLo, yHi = this.yHi, padT = 4;
+      const Y = (p) => padT + (yHi - this.fwd(p)) / (yHi - yLo) * (priceH - padT);
+      const priceAt = (y) => this.inv(yHi - (y - padT) / (priceH - padT) * (yHi - yLo));
+      const lo = this.inv(yLo), hi = this.inv(yHi);
 
-      const ink3 = css("--ink-3"), grid = css("--grid"), up = css("--up"), down = css("--down");
+      const ink = css("--ink"), ink3 = css("--ink-3"), grid = css("--grid"), up = css("--up"), down = css("--down");
+      const surface = css("--surface");
       ctx.font = `${mini ? 10 : 11}px ${css("--body")}`;
       ctx.textBaseline = "middle";
 
       ctx.strokeStyle = grid; ctx.fillStyle = ink3; ctx.lineWidth = 1;
-      for (const t of niceTicks(lo, hi, mini ? 4 : 6)) {
+      const ticks = this.log ? logTicks(lo, hi, mini ? 4 : 7) : niceTicks(lo, hi, mini ? 4 : 6);
+      for (const t of ticks) {
         const y = Math.round(Y(t)) + 0.5;
+        if (y < 0 || y > priceH) continue;
         ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(plotW, y); ctx.stroke();
         ctx.fillText(fmtAxis(t), axisX, y);
       }
+      // price-axis divider
+      ctx.beginPath(); ctx.moveTo(plotW + 0.5, 0); ctx.lineTo(plotW + 0.5, H - dateH); ctx.stroke();
 
       const line = (arr, color, y, width, a = i0, b = i1) => {
+        if (!arr) return;
         ctx.strokeStyle = color; ctx.lineWidth = width; ctx.beginPath();
         let on = false;
         for (let i = Math.max(0, a - 1); i <= Math.min(n - 1, b + 1); i++) {
@@ -271,6 +338,7 @@
       ctx.save(); ctx.beginPath(); ctx.rect(0, 0, plotW, priceH); ctx.clip();
       const lw = mini ? 1.1 : 1.4;
       line(c.sma200, css("--sma200"), Y, lw); line(c.sma150, css("--sma150"), Y, lw); line(c.sma50, css("--sma50"), Y, lw);
+      if (this.showSma10) line(c.sma10, css("--sma10"), Y, lw);
       for (let i = i0; i <= i1; i++) {
         const o = c.o[i], cl = c.c[i], col = cl >= o ? up : down;
         ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineWidth = 1;
@@ -279,7 +347,6 @@
         const top = Y(Math.max(o, cl)), h = Math.max(1, Math.abs(Y(o) - Y(cl)));
         ctx.fillRect(X(i) - bw / 2, top, bw, h);
       }
-      ctx.restore();
 
       // key levels: merge near-equal prices, stagger labels
       const merged = [];
@@ -300,6 +367,7 @@
         lastLY = ly;
       }
       ctx.setLineDash([]);
+      ctx.restore();
 
       // volume pane
       const vTop = priceH + gap;
@@ -345,13 +413,40 @@
         lastKey = key;
       }
 
-      // crosshair + readout
+      // last-price tag on the scale
+      ctx.textBaseline = "middle";
+      const tag = (y, text, bg, fg) => {
+        const th = mini ? 15 : 18, tw = this.axisW() - 2;
+        ctx.fillStyle = bg; ctx.fillRect(plotW + 1, y - th / 2, tw, th);
+        ctx.fillStyle = fg; ctx.fillText(text, axisX, y);
+      };
+      const lastC = c.c[n - 1], lastY = Y(lastC);
+      if (lastY >= 0 && lastY <= priceH) {
+        const col = lastC >= c.o[n - 1] ? up : down;
+        ctx.strokeStyle = col; ctx.globalAlpha = 0.5; ctx.setLineDash([2, 3]);
+        ctx.beginPath(); ctx.moveTo(0, Math.round(lastY) + 0.5); ctx.lineTo(plotW, Math.round(lastY) + 0.5); ctx.stroke();
+        ctx.setLineDash([]); ctx.globalAlpha = 1;
+        tag(lastY, fmtAxis(lastC), col, "#fff");
+      }
+
+      // crosshair with price label
       const hv = this.hover >= i0 && this.hover <= i1 ? this.hover : -1;
       if (hv >= 0) {
-        ctx.strokeStyle = ink3; ctx.globalAlpha = 0.65; ctx.setLineDash([3, 3]);
+        ctx.strokeStyle = ink3; ctx.globalAlpha = 0.7; ctx.setLineDash([3, 3]);
         const x = Math.round(X(hv)) + 0.5;
         ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H - dateH); ctx.stroke();
+        if (this.hoverY >= 0 && this.hoverY <= priceH) {
+          const yy = Math.round(this.hoverY) + 0.5;
+          ctx.beginPath(); ctx.moveTo(0, yy); ctx.lineTo(plotW, yy); ctx.stroke();
+          ctx.setLineDash([]); ctx.globalAlpha = 1;
+          tag(this.hoverY, fmtAxis(priceAt(this.hoverY)), ink, surface);
+        }
         ctx.setLineDash([]); ctx.globalAlpha = 1;
+      }
+      if (!this.auto || this.log) {   // small badge so it's obvious the scale is fixed or logarithmic
+        const badge = [this.auto ? "" : "Fixed scale", this.log ? "Log scale" : ""].filter(Boolean).join(", ");
+        ctx.fillStyle = ink3; ctx.textBaseline = "top";
+        ctx.fillText(badge, plotW - ctx.measureText(badge).width - 6, 4);
       }
       if (this.readout) {
         const i = hv >= 0 ? hv : n - 1;
@@ -372,6 +467,15 @@
     for (let t = Math.ceil(lo / stepV) * stepV; t <= hi; t += stepV) out.push(+t.toFixed(6));
     return out;
   }
+  function logTicks(lo, hi, count) {
+    // nice ticks on a log scale: 1, 2, 5 x 10^k, thinned to about `count`
+    const out = [];
+    for (let k = Math.floor(Math.log10(lo)) - 1; k <= Math.ceil(Math.log10(hi)); k++)
+      for (const m of [1, 1.5, 2, 3, 5, 7]) { const t = m * Math.pow(10, k); if (t >= lo && t <= hi) out.push(t); }
+    if (out.length <= count) return out.length >= 4 ? out : niceTicks(lo, hi, count);
+    const stepK = Math.ceil(out.length / count);
+    return out.filter((_, i) => i % stepK === 0);
+  }
   function fmtAxis(v) {
     if (v >= 100000) return nf0.format(Math.round(v / 1000)) + "k";
     if (v >= 1000) return nf0.format(v);
@@ -381,7 +485,13 @@
   // =====================================================================
   // Page
   // =====================================================================
-  const mainChart = new PriceChart($("chart"), { readout: $("readout") });
+  const mainChart = new PriceChart($("chart"), {
+    readout: $("readout"),
+    onScale: ({ auto, log }) => {
+      $("scaleAuto").setAttribute("aria-pressed", auto ? "true" : "false");
+      $("scaleLog").setAttribute("aria-pressed", log ? "true" : "false");
+    },
+  });
 
   async function init() {
     readHash();
@@ -414,6 +524,8 @@
     $("zoomOut").addEventListener("click", () => mainChart.zoom(1.3));
     $("zoomReset").addEventListener("click", () => mainChart.reset());
     for (const b of document.querySelectorAll("[data-range]")) b.addEventListener("click", () => mainChart.show(+b.dataset.range));
+    $("scaleAuto").addEventListener("click", () => mainChart.setAuto(!mainChart.auto));
+    $("scaleLog").addEventListener("click", () => mainChart.setLog(!mainChart.log));
   }
 
   function showNoData() {
@@ -582,7 +694,9 @@
     $("chartSub").innerHTML = "";
     $("chartSub").append(bits.join(". ") + (bits.length ? ". " : ""), tvLink(sym));
     $("rsLegend").hidden = !c.rs;
-    mainChart.setData(c);
+    const murphy = state.screen === "Murphy";
+    $("sma10Legend").hidden = !(murphy && c.sma10);
+    mainChart.setData(c, { sma10: murphy });
   }
   function clearChart() {
     state.symbol = null;
@@ -603,7 +717,7 @@
     switch (state.screen) {
       case "VCP": return r.vcp_pivot != null ? `Pivot ₹${nf2.format(r.vcp_pivot)} (${signed(r.vcp_pct_from_pivot)}%), ${r.vcp_depths}` : "";
       case "Blue Sky": return r.ath != null ? `All-time high ₹${nf2.format(r.ath)} (${signed(r.pct_from_ath)}%)` : "";
-      case "Murphy": return r.murphy_retrace != null ? `Retraced ${nf0.format(r.murphy_retrace)}%, RSI ${nf0.format(r.rsi14)}, ADX ${nf0.format(r.adx14)}` : "";
+      case "Murphy": return r.murphy_signal ? `${r.murphy_signal}, ${r.murphy_days_ago === 0 ? "today" : r.murphy_days_ago + "d ago"}. Entry ₹${nf2.format(r.murphy_entry)}, stop ₹${nf2.format(r.murphy_stop)} (${nf2.format(r.murphy_risk_pct)}% risk)` : "";
       case "Multi-Year Base": return r.myb_pivot != null ? `Old high ₹${nf2.format(r.myb_pivot)} held ${r.myb_base_years} years` : "";
       case "IPO Base": return r.ipo_high != null ? `Listing high ₹${nf2.format(r.ipo_high)} (${signed(r.ipo_pct_from_high)}%)` : "";
       default: return r.pct_from_52w_high != null ? `${signed(r.pct_from_52w_high)}% from 52-week high` : "";
@@ -620,7 +734,7 @@
         gridObserver.unobserve(en.target);
         const card = en.target, sym = card.dataset.symbol;
         const pc = new PriceChart(card.querySelector("canvas"), { mini: true });
-        loadChart(sym).then((c) => pc.setData(c))
+        loadChart(sym).then((c) => pc.setData(c, { sma10: state.screen === "Murphy" }))
           .catch(() => { card.querySelector(".card-note").textContent = "Chart data missing - it will appear after the next scan."; });
       }
     }, { rootMargin: "400px 0px" });

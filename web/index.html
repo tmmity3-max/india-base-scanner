@@ -75,7 +75,6 @@
           <button class="close" id="closeChart" aria-label="Close chart">✕</button>
         </div>
         <div class="chart-bar">
-          <div class="readout" id="readout"></div>
           <div class="zoom" role="group" aria-label="Chart range and zoom">
             <button type="button" data-range="63">3M</button>
             <button type="button" data-range="126">6M</button>
@@ -85,11 +84,16 @@
             <button type="button" id="zoomOut" aria-label="Zoom out">−</button>
             <button type="button" id="zoomIn" aria-label="Zoom in">+</button>
             <button type="button" id="zoomReset" aria-label="Reset zoom">Reset</button>
+            <span class="zoom-sep" aria-hidden="true"></span>
+            <button type="button" id="scaleAuto" class="scale-btn" aria-pressed="true" title="Auto-fit the price scale (A)">A</button>
+            <button type="button" id="scaleLog" class="scale-btn" aria-pressed="false" title="Logarithmic price scale (L)">L</button>
           </div>
         </div>
+        <div class="readout" id="readout"></div>
         <canvas id="chart" tabindex="0" role="img" aria-label="Price chart. Scroll to zoom, drag to move, double-click to reset."></canvas>
-        <p class="hint">Scroll or pinch to zoom, drag to move, double-click to reset.</p>
+        <p class="hint">Scroll or pinch to zoom, drag to move. Drag or scroll the price scale to stretch it, and double-click it to auto-fit again. Double-click the chart to reset.</p>
         <div class="legend">
+          <span id="sma10Legend" hidden><i class="k-sma10"></i>SMA 10</span>
           <span><i class="k-sma50"></i>SMA 50</span>
           <span><i class="k-sma150"></i>SMA 150</span>
           <span><i class="k-sma200"></i>SMA 200</span>
@@ -108,7 +112,7 @@
         <div><dt>Trend Template</dt><dd>Price above the 50, 150 and 200-day averages in that order, the 200-day rising for a month, at least 25% above the 52-week low, within 25% of the 52-week high, and RS rating of 70 or more.</dd></div>
         <div><dt>VCP</dt><dd>Passes the Trend Template, then at least two pullbacks in the last six months, each no deeper than the one before, the last under 12%, volume drying up, and price within 6% of the pivot (the high of the last pullback).</dd></div>
         <div><dt>Blue Sky</dt><dd>Within 3% of the all-time high, with at least three years of history and RS of 70 or more. No old buyers waiting to sell above.</dd></div>
-        <div><dt>Murphy</dt><dd>John Murphy's 10 laws of technical trading as one scan: an uptrend (close above the 200-day, 50-day above the 200-day and rising), a pullback of 33–66% of the last up-leg, price within 5% of the 50-day average, RSI between 38 and 62 and rising, MACD histogram rising, ADX of 20 or more, and lighter volume on the pullback.</dd></div>
+        <div><dt>Murphy</dt><dd>John Murphy's positional trend-following. Weekly filter from completed weeks: price above a rising 40-week SMA. Then a 10-day SMA crossing above the 50-day, a close above the last 4 full weeks' high, or a crossover confirmed by a 2-week breakout, within the last 5 sessions. Stop below the 2-week low.</dd></div>
         <div><dt>Multi-Year Base</dt><dd>The highest price was set two or more years ago and has not been beaten since. Price is now near or just above that old high.</dd></div>
         <div><dt>IPO Base</dt><dd>Listed within the last two years, has built a base at least 10 days long and no deeper than 35%, and is now within 8% of its post-listing high.</dd></div>
         <div><dt>RS rating</dt><dd>Weighted 12-month return, with the latest quarter counting double, ranked 1–99 against every liquid stock scanned.</dd></div>

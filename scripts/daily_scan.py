@@ -64,7 +64,7 @@ def chart_payload(sym: str, df: pd.DataFrame, result: ibs.ScanResult) -> dict:
         "l": _series(tail["Low"]), "c": _series(tail["Close"]),
         "v": [int(x) for x in tail["Volume"].fillna(0)],
     }
-    for k in (50, 150, 200):
+    for k in (10, 50, 150, 200):
         payload[f"sma{k}"] = _series(c.rolling(k).mean().tail(CHART_BARS))
     rl = ibs.rs_line(c, result.benchmark)
     payload["rs"] = _series(rl.reindex(tail.index)) if rl is not None else None
@@ -75,7 +75,8 @@ def chart_payload(sym: str, df: pd.DataFrame, result: ibs.ScanResult) -> dict:
                              ("myb_pivot", "multiyear_base", "Multi-year high"),
                              ("ipo_high", "ipo_base", "IPO high"),
                              ("ath", "bluesky", "All-time high"),
-                             ("murphy_swing_high", "murphy", "Swing high")):
+                             ("murphy_entry", "murphy", "Murphy entry"),
+                             ("murphy_stop", "murphy", "Stop (2-week low)")):
         val = row.get(key)
         if bool(row.get(flag, False)) and val == val and val is not None:
             levels.append({"label": label, "price": _clean(val)})

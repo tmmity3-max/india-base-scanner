@@ -13,10 +13,11 @@ Screens
 3. Blue Sky        - Price at / breaking out to an all-time high.
 4. Multi-Year Base - Breaking out of a high that held for 2+ years.
 5. IPO Base        - Recent listings basing near their post-listing high.
-6. Murphy          - John Murphy's 10 Laws of Technical Trading as a scan:
-                     a 33-66% pullback in an uptrend, at support, with RSI and
-                     MACD turning up, ADX showing a real trend and lighter
-                     volume on the pullback.
+6. Murphy          - John Murphy's positional trend-following ("Technical
+                     Analysis of the Financial Markets"): price above a rising
+                     40-week SMA, then a fresh 10/50-day crossover, 4-week-rule
+                     breakout, or crossover confirmed by a 2-week breakout.
+                     Stop below the 2-week low.
 
 Every threshold lives in ``ScanConfig`` so you can tune or combine them.
 
@@ -269,17 +270,17 @@ class ScanConfig:
     ipo_max_below_high: float = 8.0
     ipo_max_above_high: float = 8.0
 
-    # --- Murphy (10 Laws of Technical Trading) ---
-    murphy_swing_pct: float = 6.0         # min % move that counts as a swing
-    murphy_lookback: int = 120            # bars to look for the last up-leg
-    murphy_min_retrace: float = 33.0      # % of the last up-leg given back
-    murphy_max_retrace: float = 66.0
-    murphy_min_pullback_bars: int = 3
-    murphy_max_from_sma50: float = 5.0    # % either side of the 50-day SMA
-    murphy_rsi_min: float = 38.0
-    murphy_rsi_max: float = 62.0
+    # --- Murphy trend-following (Strategy 4A) ---
+    murphy_filter: str = "sma40"          # "sma40", "macd", "both" or "none" (weekly filter)
+    murphy_entry: str = "any"             # "cross", "4week", "cross2week" or "any"
+    murphy_fast: int = 10                 # fast daily SMA (book: 10)
+    murphy_slow: int = 50                 # slow daily SMA (book: 50)
+    murphy_entry_weeks: int = 4           # breakout above the high of the last N full weeks
+    murphy_stop_weeks: int = 2            # initial stop: low of the last N full weeks
+    murphy_exit_weeks: int = 2            # 4-week-rule exit: low of the last N full weeks
+    murphy_use_adx: bool = False          # also require ADX >= murphy_min_adx
     murphy_min_adx: float = 20.0
-    murphy_max_pullback_volume: float = 1.0  # pullback avg vol / 50-day avg
+    murphy_signal_days: int = 5           # list BUY signals from the last N sessions
 
     # --- Shared ---
     breakout_window: int = 5              # bars in which a breakout counts as "recent"
@@ -441,74 +442,141 @@ def adx(df: pd.DataFrame, n: int = 14) -> pd.Series:
     return dx.ewm(alpha=1 / n, adjust=False).mean()
 
 
-def find_murphy(df: pd.DataFrame, cfg: ScanConfig) -> dict:
-    """John Murphy's 10 Laws of Technical Trading as one pullback scan.
+def _weekly_on_daily(df: pd.DataFrame, cfg: ScanConfig) -> pd.DataFrame:
+    """Weekly values from *completed* weeks only, mapped onto each daily bar.
 
-    Laws 1, 2, 6  trend: close > 200 SMA, 50 SMA > 200 SMA, 50 SMA rising
-    Law 4         retracement: price has given back 33-66% of the last up-leg
-    Laws 3, 5     support: price near the 50-day SMA (the trend's support)
-    Laws 7, 8     turning point: RSI back in the middle zone and rising,
-                  MACD histogram rising (momentum turning up)
-    Law 9         trending market: ADX(14) >= 20
-    Law 10        volume: pullback on lighter volume than average
+    Mirrors Pine's ``request.security(..., "W", expr[1], lookahead_on)``: every
+    day of a week sees the previous finished week's numbers, so nothing repaints.
+    """
+    wk = df.resample("W-FRI").agg({"Open": "first", "High": "max", "Low": "min",
+                                    "Close": "last", "Volume": "sum"}).dropna(subset=["Close"])
+    wc = wk["Close"]
+    sma40 = wc.rolling(40).mean()
+    macd_line = wc.ewm(span=12, adjust=False).mean() - wc.ewm(span=26, adjust=False).mean()
+    signal = macd_line.ewm(span=9, adjust=False).mean()
+    w = pd.DataFrame({
+        "w_sma40": sma40,
+        "w_sma40_ago": sma40.shift(4),          # Pine: sma40[5] seen from the live week
+        "w_macd": macd_line, "w_signal": signal,
+        "w_hist": macd_line - signal,
+        "w_hist_prev": (macd_line - signal).shift(1),
+        "w_high_n": wk["High"].rolling(cfg.murphy_entry_weeks).max(),
+        "w_low_stop": wk["Low"].rolling(cfg.murphy_stop_weeks).min(),
+        "w_low_exit": wk["Low"].rolling(cfg.murphy_exit_weeks).min(),
+        "w_high2": wk["High"].rolling(2).max(),
+    }).shift(1)                                  # previous completed week
+    week_of_day = df.index.to_period("W-FRI").to_timestamp(how="end").normalize()
+    w.index = w.index.normalize()
+    return w.reindex(week_of_day).set_axis(df.index)
+
+
+def _murphy_run(close, fast, slow, w, entry_mode, filter_ok, adx_ok):
+    """Pine-style position loop for one entry method.
+
+    Returns (buy_index, entry, stop, in_position_now) for the most recent
+    BUY, or (None, ...) if there is none.
+    """
+    n = len(close)
+    cross_up = (fast > slow) & (fast.shift() <= slow.shift())
+    cross_dn = (fast < slow) & (fast.shift() >= slow.shift())
+    hi_n, lo_stop, lo_exit, hi2 = (w[k].to_numpy() for k in ("w_high_n", "w_low_stop", "w_low_exit", "w_high2"))
+    c, cu, cd = close.to_numpy(), cross_up.to_numpy(), cross_dn.to_numpy()
+    fs = (fast > slow).to_numpy()
+    in_pos, entry, stop, last_cross, last_buy = False, np.nan, np.nan, -10**9, None
+    two_prev = False
+    for i in range(1, n):
+        if cu[i]:
+            last_cross = i
+        two = c[i] > hi2[i] if hi2[i] == hi2[i] else False
+        if entry_mode == "cross":
+            raw = cu[i]
+        elif entry_mode == "4week":
+            raw = hi_n[i] == hi_n[i] and c[i] > hi_n[i] and c[i - 1] <= hi_n[i]
+        else:  # crossover confirmed by a 2-week breakout
+            raw = (i - last_cross <= 10) and fs[i] and two and not two_prev
+        two_prev = two
+        if in_pos:
+            trail = (c[i] < lo_exit[i]) if entry_mode == "4week" else cd[i]
+            if c[i] < stop or trail:
+                in_pos = False
+            elif entry_mode == "4week" and lo_exit[i] == lo_exit[i]:
+                stop = max(stop, lo_exit[i])
+        elif raw and filter_ok[i] and adx_ok[i]:
+            in_pos, entry = True, c[i]
+            stop = min(lo_stop[i], c[i] * 0.999) if lo_stop[i] == lo_stop[i] else c[i] * 0.95
+            last_buy = i
+    return last_buy, entry, stop, in_pos
+
+
+def find_murphy(df: pd.DataFrame, cfg: ScanConfig, bench: Optional[pd.Series] = None) -> dict:
+    """Murphy positional trend-following (Strategy 4A) as a daily scan.
+
+    Weekly filter (completed weeks): price > rising 40-week SMA, and/or weekly
+    MACD > signal. Entry on the daily chart: 10/50 SMA crossover, the 4-week
+    rule (close above the high of the last 4 full weeks), or a crossover
+    confirmed by a 2-week breakout. Initial stop below the 2-week low.
+    A stock is listed when a BUY fired in the last ``murphy_signal_days``
+    sessions and the position is still open.
     """
     out = {"murphy": False}
-    n = len(df)
-    if n < 220:
+    if len(df) < 300:
         return out
-    c, v = df["Close"], df["Volume"]
+    df = df.tail(600)
+    c = df["Close"]
+    w = _weekly_on_daily(df, cfg)
+    f40 = ((c > w["w_sma40"]) & (w["w_sma40"] > w["w_sma40_ago"])).to_numpy()
+    fmacd = (w["w_macd"] > w["w_signal"]).to_numpy()
+    filt = {"sma40": f40, "macd": fmacd, "both": f40 & fmacd}.get(cfg.murphy_filter, np.ones(len(df), bool))
+    ax = adx(df)
+    adx_ok = (ax >= cfg.murphy_min_adx).to_numpy() if cfg.murphy_use_adx else np.ones(len(df), bool)
+    fast, slow = c.rolling(cfg.murphy_fast).mean(), c.rolling(cfg.murphy_slow).mean()
+
+    modes = ["cross", "4week", "cross2week"] if cfg.murphy_entry == "any" else [cfg.murphy_entry]
+    labels = {"cross": f"{cfg.murphy_fast}/{cfg.murphy_slow} crossover",
+              "4week": f"{cfg.murphy_entry_weeks}-week rule",
+              "cross2week": "Crossover + 2-week breakout"}
+    n, best = len(df), None
+    for mode in modes:
+        i, entry, stop, open_ = _murphy_run(c, fast, slow, w, mode, filt, adx_ok)
+        if i is not None and open_ and n - 1 - i < cfg.murphy_signal_days:
+            if best is None or i > best[0]:
+                best = (i, entry, stop, [labels[mode]])
+            elif i == best[0]:
+                best[3].append(labels[mode])
+
+    last = w.iloc[-1]
     close = float(c.iloc[-1])
-    sma50, sma200 = c.rolling(50).mean(), c.rolling(200).mean()
-    r, mh, ax = rsi(c), macd_hist(c), adx(df)
-
-    w = df.iloc[-cfg.murphy_lookback:]
-    piv = zigzag(w["High"].to_numpy(float), w["Low"].to_numpy(float), cfg.murphy_swing_pct)
-    # last confirmed swing high and the swing low before it
-    hi_idx = [k for k, p in enumerate(piv) if p[2] == "H"]
-    swing_hi = swing_lo = np.nan
-    retrace, pb_bars, pb_vol = np.nan, 0, np.nan
-    if hi_idx:
-        k = hi_idx[-1]
-        if k == len(piv) - 1 and len(hi_idx) > 1 and piv[k][1] <= close * 1.0001:
-            k = hi_idx[-2]  # price is at the tentative high - no pullback yet
-        lows_before = [p for p in piv[:k] if p[2] == "L"]
-        if lows_before:
-            hi_i, swing_hi = piv[k][0], piv[k][1]
-            swing_lo = lows_before[-1][1]
-            leg = swing_hi - swing_lo
-            if leg > 0:
-                retrace = (swing_hi - close) / leg * 100
-            pb_bars = len(w) - 1 - hi_i
-            vol50 = float(v.iloc[-51:-1].mean()) if n > 51 else float(v.mean())
-            if pb_bars > 0 and vol50:
-                pb_vol = float(v.iloc[-pb_bars:].mean()) / vol50
-
-    from_sma50 = (close / float(sma50.iloc[-1]) - 1) * 100
+    rs_score = np.nan
+    if bench is not None:
+        b = bench.reindex(df.index).ffill()
+        def wperf(s):
+            s = s.to_numpy(float)
+            if len(s) < 253 or np.isnan(s[-253]):
+                return np.nan
+            r = lambda k: s[-1] / s[-1 - k] - 1  # noqa: E731
+            return (2 * r(63) + r(126) + r(189) + r(252)) / 5 * 100
+        rs_score = wperf(c) - wperf(b)
     out.update(
-        murphy_swing_high=round(float(swing_hi), 2) if swing_hi == swing_hi else np.nan,
-        murphy_swing_low=round(float(swing_lo), 2) if swing_lo == swing_lo else np.nan,
-        murphy_retrace=round(float(retrace), 1) if retrace == retrace else np.nan,
-        murphy_pullback_bars=int(pb_bars),
-        murphy_pullback_vol=round(float(pb_vol), 2) if pb_vol == pb_vol else np.nan,
-        pct_from_sma50=round(from_sma50, 2),
-        rsi14=round(float(r.iloc[-1]), 1),
+        murphy_filter_ok=bool(filt[-1]),
+        murphy_sma40w=round(float(last["w_sma40"]), 2) if last["w_sma40"] == last["w_sma40"] else np.nan,
+        murphy_weekly_macd_ok=bool(fmacd[-1]),
+        murphy_week_high=round(float(last["w_high_n"]), 2) if last["w_high_n"] == last["w_high_n"] else np.nan,
+        murphy_weekly_hist_down=bool(last["w_hist"] > 0 and last["w_hist"] < last["w_hist_prev"]),
         adx14=round(float(ax.iloc[-1]), 1),
-        macd_turning_up=bool(mh.iloc[-1] > mh.iloc[-2]),
+        murphy_rs_score=round(float(rs_score), 1) if rs_score == rs_score else np.nan,
     )
-    trend = (close > sma200.iloc[-1] and sma50.iloc[-1] > sma200.iloc[-1]
-             and sma50.iloc[-1] > sma50.iloc[-11])
-    out["murphy"] = bool(
-        trend
-        and retrace == retrace
-        and cfg.murphy_min_retrace <= retrace <= cfg.murphy_max_retrace
-        and pb_bars >= cfg.murphy_min_pullback_bars
-        and abs(from_sma50) <= cfg.murphy_max_from_sma50
-        and cfg.murphy_rsi_min <= out["rsi14"] <= cfg.murphy_rsi_max
-        and r.iloc[-1] > r.iloc[-2]
-        and out["macd_turning_up"]
-        and out["adx14"] >= cfg.murphy_min_adx
-        and pb_vol == pb_vol and pb_vol <= cfg.murphy_max_pullback_volume
-    )
+    if best:
+        i, entry, stop, how = best
+        out.update(
+            murphy=True,
+            murphy_signal=", ".join(how),
+            murphy_signal_date=df.index[i].date().isoformat(),
+            murphy_days_ago=int(n - 1 - i),
+            murphy_entry=round(float(entry), 2),
+            murphy_stop=round(float(stop), 2),
+            murphy_risk_pct=round((entry - stop) / entry * 100, 2),
+            murphy_pct_from_entry=round((close / entry - 1) * 100, 2),
+        )
     return out
 
 
@@ -614,7 +682,7 @@ def analyze_stock(df: pd.DataFrame, cfg: ScanConfig,
         )
 
     # --- Murphy ---
-    m.update(find_murphy(df, cfg))
+    m.update(find_murphy(df, cfg, bench))
     return m
 
 
@@ -634,10 +702,10 @@ SCREEN_COLUMNS = {
     "Multi-Year Base": ["symbol", "industry", "close", "rs_rating", "myb_pivot",
                         "myb_pct_from_pivot", "myb_base_years", "myb_depth",
                         "vol_ratio", "turnover_cr"],
-    "Murphy": ["symbol", "industry", "close", "rs_rating", "murphy_retrace",
-               "murphy_swing_high", "pct_from_sma50", "rsi14", "adx14",
-               "macd_turning_up", "murphy_pullback_bars", "murphy_pullback_vol",
-               "turnover_cr"],
+    "Murphy": ["symbol", "industry", "close", "rs_rating", "murphy_signal",
+               "murphy_signal_date", "murphy_days_ago", "murphy_entry", "murphy_stop",
+               "murphy_risk_pct", "murphy_pct_from_entry", "murphy_sma40w",
+               "murphy_weekly_macd_ok", "adx14", "murphy_rs_score", "turnover_cr"],
     "IPO Base": ["symbol", "industry", "close", "listed_days", "ipo_high",
                  "ipo_pct_from_high", "ipo_base_days", "ipo_depth", "vol_ratio",
                  "turnover_cr"],
@@ -690,12 +758,13 @@ def apply_screens(metrics: pd.DataFrame, cfg: ScanConfig) -> Dict[str, pd.DataFr
     }
     sort_by = {"Trend Template": "rs_rating", "VCP": "rs_rating", "Blue Sky": "rs_rating",
                "Multi-Year Base": "myb_base_years", "IPO Base": "ipo_base_days",
-               "Murphy": "rs_rating"}
+               "Murphy": "murphy_days_ago"}
+    ascending = {"Murphy": True}  # newest signals first
     out = {}
     for name, mask in masks.items():
         cols = [c for c in SCREEN_COLUMNS[name] if c in m.columns]
         out[name] = (m.loc[mask.fillna(False), cols]
-                     .sort_values(sort_by[name], ascending=False)
+                     .sort_values(sort_by[name], ascending=ascending.get(name, False))
                      .reset_index(drop=True))
     return out
 
@@ -798,7 +867,7 @@ def plot_stock(symbol: str, data: Dict[str, pd.DataFrame], result: Optional[Scan
             for key, flag, lbl, c in (("vcp_pivot", "vcp", "VCP pivot", "#e66101"),
                                       ("myb_pivot", "multiyear_base", "Multi-year high", "#5e3c99"),
                                       ("ipo_high", "ipo_base", "IPO high", "#008837"),
-                                      ("murphy_swing_high", "murphy", "Swing high", "#b2182b")):
+                                      ("murphy_stop", "murphy", "Stop (2-week low)", "#b2182b")):
                 val = r.get(key, np.nan)
                 if not bool(r.get(flag, False)) or val != val:
                     continue
