@@ -55,6 +55,16 @@ def ipo_stock():
     return make_series([(0, 100), (40, 150), (40, 122), (55, 147)], seed=3)
 
 
+def murphy_stock():
+    # Uptrend, a fresh up-leg, then a ~45% pullback to the 50 SMA on light volume,
+    # turning up over the last two bars
+    wp = [(0, 100), (380, 240), (25, 226), (30, 282), (12, 255), (2, 258)]
+    n = 1 + sum(b for b, _ in wp[1:])
+    vol = np.full(n, 1_000_000.0)
+    vol[-14:] = 650_000
+    return make_series(wp, noise=0.003, seed=5, volume=vol)
+
+
 def downtrend_stock():
     return make_series([(0, 300), (600, 120)], seed=4)
 
@@ -92,9 +102,25 @@ def test_ipo():
     assert m["ipo_base"], m
 
 
+def test_murphy():
+    out = ibs.find_murphy(murphy_stock(), ibs.ScanConfig())
+    assert out["murphy"], out
+    assert 33 <= out["murphy_retrace"] <= 66
+
+
+def test_murphy_not_in_downtrend():
+    assert not ibs.find_murphy(downtrend_stock(), ibs.ScanConfig())["murphy"]
+
+
+def test_indicators_in_range():
+    df = vcp_stock()
+    r, a = ibs.rsi(df["Close"]), ibs.adx(df)
+    assert r.between(0, 100).all() and a.dropna().between(0, 100).all()
+
+
 def test_full_scan_and_excel(tmp_path=None):
     data = {"VCPCO": vcp_stock(), "SKYCO": bluesky_stock(), "MYBCO": multiyear_stock(),
-            "IPOCO": ipo_stock(), "DOWNCO": downtrend_stock()}
+            "IPOCO": ipo_stock(), "DOWNCO": downtrend_stock(), "MURCO": murphy_stock()}
     cfg = ibs.ScanConfig(min_rs=0, min_turnover_cr=0)
     res = ibs.scan(data, cfg)
     s = res.screens
@@ -102,6 +128,7 @@ def test_full_scan_and_excel(tmp_path=None):
     assert "SKYCO" in set(s["Blue Sky"]["symbol"])
     assert "MYBCO" in set(s["Multi-Year Base"]["symbol"])
     assert "IPOCO" in set(s["IPO Base"]["symbol"])
+    assert "MURCO" in set(s["Murphy"]["symbol"])
     assert "DOWNCO" not in set(s["Trend Template"]["symbol"])
     path = os.path.join(str(tmp_path or "."), "test_results.xlsx")
     res.to_excel(path)

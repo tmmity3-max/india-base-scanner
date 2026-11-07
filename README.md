@@ -18,11 +18,13 @@ No installation, no account, no paid data. Open the notebook, click *Run all*, a
 | **Blue Sky** | At or breaking out to an **all-time high**, so there is no overhead supply |
 | **Multi-Year Base** | Breaking out of a high that held for **2+ years** |
 | **IPO Base** | Recent listings basing just under their post-listing high |
+| **Murphy** | John Murphy's 10 Laws of Technical Trading: a 33–66% pullback in an uptrend, at the 50-day average, with RSI and MACD turning up, ADX ≥ 20 and lighter volume |
 
 Every threshold is a **dial** in the notebook form. Change it, re-run, and the re-scan takes seconds without downloading again.
 
 ### Extras
-- **RS rating (1-99)** ranked against the stocks you scan
+- **All NSE stocks** with a liquidity filter: price ≥ ₹20 and average daily turnover ≥ ₹1 crore
+- **RS rating (1-99)** ranked against the liquid stocks you scan
 - **RS line vs NIFTY 50 or NIFTY 500** (switchable), with a "new 52-week high" flag
 - **Charts**: candles, 50/150/200 SMAs, pivot lines, volume and the RS line
 - **Excel export**: one sheet per screen, plus your settings and every metric
@@ -32,9 +34,10 @@ Every threshold is a **dial** in the notebook form. Change it, re-run, and the r
 
 A free website shows the latest scan. It is updated automatically every weekday after the market closes:
 
-- `scripts/daily_scan.py` runs the NIFTY 500 scan and writes JSON into `web/data/`.
-- `.github/workflows/daily-scan.yml` runs that script at 16:53 IST, Monday to Friday, and commits the results.
-- Vercel serves the static site in `web/`. Each commit redeploys it, so there is no server and no database.
+- `scripts/daily_scan.py` scans every NSE stock, keeps those with ₹1 crore+ daily turnover, and writes JSON.
+- `.github/workflows/daily-scan.yml` runs it at 16:53 IST, Monday to Friday, and force-pushes the JSON to the `data` branch, so `main` doesn't grow every day.
+- Vercel serves the static site in `web/`, which reads the data from `raw.githubusercontent.com`. No server, no database.
+- Charts zoom and pan like TradingView (scroll, drag, pinch, 3M/6M/1Y/2Y), and a *Charts only* view shows every match as a grid.
 
 To host your own copy, import this repo on [Vercel](https://vercel.com/new), set **Root Directory** to `web` and **Framework Preset** to *Other*, then click Deploy.
 
@@ -98,6 +101,21 @@ Listed 20-500 trading days ago, based at least 10 days below the post-listing hi
 </details>
 
 <details>
+<summary><b>Murphy: 10 Laws of Technical Trading</b></summary>
+
+| Murphy's law | Rule in the scan |
+|---|---|
+| 1, 2, 6: map the trend, trade with it, follow moving averages | Close > 200 SMA, 50 SMA > 200 SMA, 50 SMA rising over 10 bars |
+| 4: know how far to backtrack | Price has given back 33–66% of the last up-leg (swings of ≥ 6%) |
+| 3, 5: support and trendlines | Close within 5% of the 50-day SMA |
+| 7, 8: turning points and warning signs | RSI(14) between 38 and 62 and rising; MACD histogram rising |
+| 9: trending or not | ADX(14) ≥ 20 |
+| 10: confirm with volume | Average volume during the pullback ≤ the 50-day average |
+
+All thresholds are `murphy_*` settings in `ScanConfig`.
+</details>
+
+<details>
 <summary><b>RS rating</b></summary>
 
 0.4 × 3-month return + 0.2 × 6-month + 0.2 × 9-month + 0.2 × 12-month, then ranked as a percentile (1-99) across the scanned universe.
@@ -116,7 +134,7 @@ India_Base_Scanner.ipynb   # Colab notebook (generated)
 tools/build_notebook.py    # rebuilds the notebook from the engine
 tests/test_screens.py      # offline tests on synthetic price paths
 scripts/daily_scan.py      # writes the website's JSON data
-web/                       # static website for Vercel (HTML, CSS, JS)
+web/                       # static website for Vercel (HTML, CSS, JS, canvas charts)
 .github/workflows/         # daily scan on GitHub Actions
 ```
 

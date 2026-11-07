@@ -13,6 +13,10 @@ Screens
 3. Blue Sky        - Price at / breaking out to an all-time high.
 4. Multi-Year Base - Breaking out of a high that held for 2+ years.
 5. IPO Base        - Recent listings basing near their post-listing high.
+6. Murphy          - John Murphy's 10 Laws of Technical Trading as a scan:
+                     a 33-66% pullback in an uptrend, at support, with RSI and
+                     MACD turning up, ADX showing a real trend and lighter
+                     volume on the pullback.
 
 Every threshold lives in ``ScanConfig`` so you can tune or combine them.
 
@@ -265,6 +269,18 @@ class ScanConfig:
     ipo_max_below_high: float = 8.0
     ipo_max_above_high: float = 8.0
 
+    # --- Murphy (10 Laws of Technical Trading) ---
+    murphy_swing_pct: float = 6.0         # min % move that counts as a swing
+    murphy_lookback: int = 120            # bars to look for the last up-leg
+    murphy_min_retrace: float = 33.0      # % of the last up-leg given back
+    murphy_max_retrace: float = 66.0
+    murphy_min_pullback_bars: int = 3
+    murphy_max_from_sma50: float = 5.0    # % either side of the 50-day SMA
+    murphy_rsi_min: float = 38.0
+    murphy_rsi_max: float = 62.0
+    murphy_min_adx: float = 20.0
+    murphy_max_pullback_volume: float = 1.0  # pullback avg vol / 50-day avg
+
     # --- Shared ---
     breakout_window: int = 5              # bars in which a breakout counts as "recent"
     surge_volume: float = 1.5             # today's vol / 50-day avg = "volume surge"
@@ -397,6 +413,105 @@ def _base_from_high(df: pd.DataFrame, exclude_last: int) -> Tuple[float, int, fl
     return pivot, i, (pivot - low_after) / pivot * 100
 
 
+def rsi(close: pd.Series, n: int = 14) -> pd.Series:
+    """Wilder's RSI."""
+    d = close.diff()
+    up = d.clip(lower=0).ewm(alpha=1 / n, adjust=False).mean()
+    dn = (-d.clip(upper=0)).ewm(alpha=1 / n, adjust=False).mean()
+    rs = up / dn.replace(0, np.nan)
+    return (100 - 100 / (1 + rs)).fillna(100)
+
+
+def macd_hist(close: pd.Series, fast: int = 12, slow: int = 26, signal: int = 9) -> pd.Series:
+    line = close.ewm(span=fast, adjust=False).mean() - close.ewm(span=slow, adjust=False).mean()
+    return line - line.ewm(span=signal, adjust=False).mean()
+
+
+def adx(df: pd.DataFrame, n: int = 14) -> pd.Series:
+    """Wilder's Average Directional Index."""
+    h, l, c = df["High"], df["Low"], df["Close"]
+    up, dn = h.diff(), -l.diff()
+    plus_dm = np.where((up > dn) & (up > 0), up, 0.0)
+    minus_dm = np.where((dn > up) & (dn > 0), dn, 0.0)
+    tr = pd.concat([h - l, (h - c.shift()).abs(), (l - c.shift()).abs()], axis=1).max(axis=1)
+    atr = tr.ewm(alpha=1 / n, adjust=False).mean()
+    pdi = 100 * pd.Series(plus_dm, index=df.index).ewm(alpha=1 / n, adjust=False).mean() / atr
+    mdi = 100 * pd.Series(minus_dm, index=df.index).ewm(alpha=1 / n, adjust=False).mean() / atr
+    dx = 100 * (pdi - mdi).abs() / (pdi + mdi).replace(0, np.nan)
+    return dx.ewm(alpha=1 / n, adjust=False).mean()
+
+
+def find_murphy(df: pd.DataFrame, cfg: ScanConfig) -> dict:
+    """John Murphy's 10 Laws of Technical Trading as one pullback scan.
+
+    Laws 1, 2, 6  trend: close > 200 SMA, 50 SMA > 200 SMA, 50 SMA rising
+    Law 4         retracement: price has given back 33-66% of the last up-leg
+    Laws 3, 5     support: price near the 50-day SMA (the trend's support)
+    Laws 7, 8     turning point: RSI back in the middle zone and rising,
+                  MACD histogram rising (momentum turning up)
+    Law 9         trending market: ADX(14) >= 20
+    Law 10        volume: pullback on lighter volume than average
+    """
+    out = {"murphy": False}
+    n = len(df)
+    if n < 220:
+        return out
+    c, v = df["Close"], df["Volume"]
+    close = float(c.iloc[-1])
+    sma50, sma200 = c.rolling(50).mean(), c.rolling(200).mean()
+    r, mh, ax = rsi(c), macd_hist(c), adx(df)
+
+    w = df.iloc[-cfg.murphy_lookback:]
+    piv = zigzag(w["High"].to_numpy(float), w["Low"].to_numpy(float), cfg.murphy_swing_pct)
+    # last confirmed swing high and the swing low before it
+    hi_idx = [k for k, p in enumerate(piv) if p[2] == "H"]
+    swing_hi = swing_lo = np.nan
+    retrace, pb_bars, pb_vol = np.nan, 0, np.nan
+    if hi_idx:
+        k = hi_idx[-1]
+        if k == len(piv) - 1 and len(hi_idx) > 1 and piv[k][1] <= close * 1.0001:
+            k = hi_idx[-2]  # price is at the tentative high - no pullback yet
+        lows_before = [p for p in piv[:k] if p[2] == "L"]
+        if lows_before:
+            hi_i, swing_hi = piv[k][0], piv[k][1]
+            swing_lo = lows_before[-1][1]
+            leg = swing_hi - swing_lo
+            if leg > 0:
+                retrace = (swing_hi - close) / leg * 100
+            pb_bars = len(w) - 1 - hi_i
+            vol50 = float(v.iloc[-51:-1].mean()) if n > 51 else float(v.mean())
+            if pb_bars > 0 and vol50:
+                pb_vol = float(v.iloc[-pb_bars:].mean()) / vol50
+
+    from_sma50 = (close / float(sma50.iloc[-1]) - 1) * 100
+    out.update(
+        murphy_swing_high=round(float(swing_hi), 2) if swing_hi == swing_hi else np.nan,
+        murphy_swing_low=round(float(swing_lo), 2) if swing_lo == swing_lo else np.nan,
+        murphy_retrace=round(float(retrace), 1) if retrace == retrace else np.nan,
+        murphy_pullback_bars=int(pb_bars),
+        murphy_pullback_vol=round(float(pb_vol), 2) if pb_vol == pb_vol else np.nan,
+        pct_from_sma50=round(from_sma50, 2),
+        rsi14=round(float(r.iloc[-1]), 1),
+        adx14=round(float(ax.iloc[-1]), 1),
+        macd_turning_up=bool(mh.iloc[-1] > mh.iloc[-2]),
+    )
+    trend = (close > sma200.iloc[-1] and sma50.iloc[-1] > sma200.iloc[-1]
+             and sma50.iloc[-1] > sma50.iloc[-11])
+    out["murphy"] = bool(
+        trend
+        and retrace == retrace
+        and cfg.murphy_min_retrace <= retrace <= cfg.murphy_max_retrace
+        and pb_bars >= cfg.murphy_min_pullback_bars
+        and abs(from_sma50) <= cfg.murphy_max_from_sma50
+        and cfg.murphy_rsi_min <= out["rsi14"] <= cfg.murphy_rsi_max
+        and r.iloc[-1] > r.iloc[-2]
+        and out["macd_turning_up"]
+        and out["adx14"] >= cfg.murphy_min_adx
+        and pb_vol == pb_vol and pb_vol <= cfg.murphy_max_pullback_volume
+    )
+    return out
+
+
 def rs_raw_score(close: pd.Series) -> float:
     """IBD-style weighted 12-month performance (recent quarter weighted 2x)."""
     if len(close) < 253:
@@ -497,6 +612,9 @@ def analyze_stock(df: pd.DataFrame, cfg: ScanConfig,
             and idepth <= cfg.ipo_max_depth
             and -cfg.ipo_max_below_high <= idist <= cfg.ipo_max_above_high
         )
+
+    # --- Murphy ---
+    m.update(find_murphy(df, cfg))
     return m
 
 
@@ -516,6 +634,10 @@ SCREEN_COLUMNS = {
     "Multi-Year Base": ["symbol", "industry", "close", "rs_rating", "myb_pivot",
                         "myb_pct_from_pivot", "myb_base_years", "myb_depth",
                         "vol_ratio", "turnover_cr"],
+    "Murphy": ["symbol", "industry", "close", "rs_rating", "murphy_retrace",
+               "murphy_swing_high", "pct_from_sma50", "rsi14", "adx14",
+               "macd_turning_up", "murphy_pullback_bars", "murphy_pullback_vol",
+               "turnover_cr"],
     "IPO Base": ["symbol", "industry", "close", "listed_days", "ipo_high",
                  "ipo_pct_from_high", "ipo_base_days", "ipo_depth", "vol_ratio",
                  "turnover_cr"],
@@ -564,9 +686,11 @@ def apply_screens(metrics: pd.DataFrame, cfg: ScanConfig) -> Dict[str, pd.DataFr
         "Blue Sky": liquid & m["bluesky"] & (m["rs_rating"].fillna(0) >= cfg.min_rs),
         "Multi-Year Base": liquid & m["multiyear_base"],
         "IPO Base": liquid & m["ipo_base"],
+        "Murphy": liquid & m["murphy"],
     }
     sort_by = {"Trend Template": "rs_rating", "VCP": "rs_rating", "Blue Sky": "rs_rating",
-               "Multi-Year Base": "myb_base_years", "IPO Base": "ipo_base_days"}
+               "Multi-Year Base": "myb_base_years", "IPO Base": "ipo_base_days",
+               "Murphy": "rs_rating"}
     out = {}
     for name, mask in masks.items():
         cols = [c for c in SCREEN_COLUMNS[name] if c in m.columns]
@@ -596,7 +720,12 @@ def scan(data: Dict[str, pd.DataFrame], cfg: Optional[ScanConfig] = None,
         return ScanResult(metrics, {k: pd.DataFrame() for k in SCREEN_COLUMNS}, cfg, benchmark)
 
     # RS rating: percentile of rs_raw across the scanned universe, 1-99
-    metrics["rs_rating"] = (metrics["rs_raw"].rank(pct=True) * 98 + 1).round()
+    # RS rating: percentile of rs_raw among the *liquid* stocks only, 1-99,
+    # so thinly traded names don't distort the ranking.
+    liquid = (metrics["close"] >= cfg.min_price) & (metrics["turnover_cr"] >= cfg.min_turnover_cr)
+    metrics["liquid"] = liquid
+    metrics["rs_rating"] = np.nan
+    metrics.loc[liquid, "rs_rating"] = (metrics.loc[liquid, "rs_raw"].rank(pct=True) * 98 + 1).round()
     if universe is not None and "industry" in universe:
         metrics = metrics.merge(universe[["symbol", "industry"]], on="symbol", how="left")
     else:
@@ -668,7 +797,8 @@ def plot_stock(symbol: str, data: Dict[str, pd.DataFrame], result: Optional[Scan
                 title += "   [" + ", ".join(tags) + "]"
             for key, flag, lbl, c in (("vcp_pivot", "vcp", "VCP pivot", "#e66101"),
                                       ("myb_pivot", "multiyear_base", "Multi-year high", "#5e3c99"),
-                                      ("ipo_high", "ipo_base", "IPO high", "#008837")):
+                                      ("ipo_high", "ipo_base", "IPO high", "#008837"),
+                                      ("murphy_swing_high", "murphy", "Swing high", "#b2182b")):
                 val = r.get(key, np.nan)
                 if not bool(r.get(flag, False)) or val != val:
                     continue

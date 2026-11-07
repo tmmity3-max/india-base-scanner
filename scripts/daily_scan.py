@@ -1,12 +1,15 @@
 """Daily scan for the website.
 
-Runs the scanner and writes static JSON that the Vercel site in ``web/`` reads:
+Runs the scanner and writes static JSON that the website in ``web/`` reads:
 
-    web/data/latest.json          screens, counts, settings, scan date
-    web/data/charts/<SYMBOL>.json last ~1 year of candles for every match
+    <out>/latest.json          screens, counts, settings, scan date
+    <out>/charts/<SYMBOL>.json about 2 years of candles for every match
 
-GitHub Actions runs this after market close (see .github/workflows/daily-scan.yml).
-Run it yourself with:  python scripts/daily_scan.py --universe NIFTY500
+GitHub Actions runs this after market close and force-pushes <out> to the
+``data`` branch (see .github/workflows/daily-scan.yml), so ``main`` never
+fills up with daily data. The site loads it from raw.githubusercontent.com.
+
+Run it yourself with:  python scripts/daily_scan.py --universe ALL_EQ
 """
 from __future__ import annotations
 
@@ -26,7 +29,7 @@ sys.path.insert(0, ROOT)
 import india_base_scanner as ibs  # noqa: E402
 
 IST = timezone(timedelta(hours=5, minutes=30))
-CHART_BARS = 260
+CHART_BARS = 500
 
 
 def _clean(v):
@@ -71,7 +74,8 @@ def chart_payload(sym: str, df: pd.DataFrame, result: ibs.ScanResult) -> dict:
     for key, flag, label in (("vcp_pivot", "vcp", "VCP pivot"),
                              ("myb_pivot", "multiyear_base", "Multi-year high"),
                              ("ipo_high", "ipo_base", "IPO high"),
-                             ("ath", "bluesky", "All-time high")):
+                             ("ath", "bluesky", "All-time high"),
+                             ("murphy_swing_high", "murphy", "Swing high")):
         val = row.get(key)
         if bool(row.get(flag, False)) and val == val and val is not None:
             levels.append({"label": label, "price": _clean(val)})
@@ -101,6 +105,9 @@ def write_site_data(result: ibs.ScanResult, data: dict, out_dir: str,
         "universe": universe_name,
         "benchmark": benchmark_name,
         "stocks_scanned": int(len(result.metrics)),
+        "stocks_liquid": int(result.metrics["liquid"].sum()) if "liquid" in result.metrics else None,
+        "min_turnover_cr": result.config.min_turnover_cr,
+        "min_price": result.config.min_price,
         "summary": _records(result.summary()),
         "screens": {name: _records(t) for name, t in result.screens.items()},
         "config": result.config.to_dict(),
@@ -127,13 +134,13 @@ def load_universe(name: str, cache_path: str) -> pd.DataFrame:
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--universe", default="NIFTY500")
+    ap.add_argument("--universe", default="ALL_EQ")
     ap.add_argument("--benchmark", default="NIFTY500")
     ap.add_argument("--period", default="max")
     ap.add_argument("--out", default=os.path.join(ROOT, "web", "data"))
     args = ap.parse_args()
 
-    cache = os.path.join(ROOT, "data", f"universe_{args.universe.lower()}.csv")
+    cache = os.path.join(args.out, f"universe_{args.universe.lower()}.csv")
     uni = load_universe(args.universe, cache)
     print(f"{len(uni)} symbols in {args.universe}")
     data = ibs.download_prices(uni["symbol"], period=args.period)

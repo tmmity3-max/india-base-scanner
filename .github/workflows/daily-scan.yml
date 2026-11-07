@@ -2,10 +2,18 @@ name: Daily scan
 
 # Runs after NSE closes (15:30 IST) so the website shows the latest setups.
 # 11:23 UTC = 16:53 IST, Monday to Friday. Run it any time from the Actions tab.
+#
+# Results are force-pushed to the `data` branch (one commit, no history), so the
+# main branch stays small. The website reads them from raw.githubusercontent.com.
 on:
   schedule:
     - cron: "23 11 * * 1-5"
   workflow_dispatch:
+    inputs:
+      universe:
+        description: "Universe (ALL_EQ, NIFTY500, NIFTY200 ...)"
+        default: "ALL_EQ"
+        required: false
 
 permissions:
   contents: write
@@ -17,7 +25,9 @@ concurrency:
 jobs:
   scan:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
+    env:
+      UNIVERSE: ${{ github.event.inputs.universe || 'ALL_EQ' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -32,17 +42,23 @@ jobs:
       - name: Run tests
         run: python tests/test_screens.py
 
-      - name: Run the scan
-        run: python scripts/daily_scan.py --universe NIFTY500 --benchmark NIFTY500
-
-      - name: Commit results
+      - name: Restore cached universe from the data branch
         run: |
+          mkdir -p out
+          if git fetch --depth 1 origin data 2>/dev/null; then
+            f="universe_$(echo "$UNIVERSE" | tr 'A-Z' 'a-z').csv"
+            git show "FETCH_HEAD:$f" > "/tmp/$f" 2>/dev/null && [ -s "/tmp/$f" ] && mv "/tmp/$f" "out/$f" || true
+          fi
+
+      - name: Run the scan
+        run: python scripts/daily_scan.py --universe "$UNIVERSE" --benchmark NIFTY500 --out out
+
+      - name: Publish results to the data branch
+        run: |
+          cd out
+          git init -q -b data
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add web/data data
-          if git diff --cached --quiet; then
-            echo "No changes to commit"
-          else
-            git commit -m "Daily scan $(date -u +%Y-%m-%d)"
-            git push
-          fi
+          git add -A
+          git commit -q -m "Scan $(date -u +%Y-%m-%d)"
+          git push -q --force "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" data

@@ -43,6 +43,7 @@
 }
 
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 html { -webkit-text-size-adjust: 100%; }
 body {
   margin: 0;
@@ -80,7 +81,7 @@ main { max-width: 1360px; margin: 0 auto; padding: 0 24px; }
 
 /* Screen switcher - the hero */
 .screens {
-  display: grid; grid-template-columns: repeat(5, minmax(0, 1fr));
+  display: grid; grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 0; margin: 28px 0 0;
   border-top: 2px solid var(--ink);
 }
@@ -102,13 +103,22 @@ main { max-width: 1360px; margin: 0 auto; padding: 0 24px; }
 /* Workspace */
 .workspace { display: grid; grid-template-columns: minmax(0, 1fr) minmax(380px, 46%); gap: 24px; align-items: start; }
 .list { min-width: 0; }
-.tools { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+.tools { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 14px; margin-bottom: 12px; }
+.tool-right { margin-left: auto; display: flex; gap: 12px; flex-wrap: wrap; }
+.seg { display: inline-flex; align-items: center; background: var(--surface); border: 1px solid var(--grid); border-radius: 9px; padding: 3px; gap: 2px; }
+.seg-label { font-size: 12.5px; color: var(--ink-3); padding: 0 6px 0 8px; }
+.seg button, .zoom button {
+  appearance: none; border: 0; background: none; color: var(--ink-2); font: 500 13px/1 var(--body);
+  padding: 7px 11px; border-radius: 6px; cursor: pointer; white-space: nowrap;
+}
+.seg button:hover, .zoom button:hover { color: var(--ink); background: var(--row-hover); }
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
 .search input {
   width: min(320px, 60vw); font: inherit; color: var(--ink);
   background: var(--surface); border: 1px solid var(--grid); border-radius: 8px; padding: 8px 12px;
 }
 .search input::placeholder { color: var(--ink-3); }
-.count { color: var(--ink-3); font-size: 13px; }
+.count { color: var(--ink-3); font-size: 13px; white-space: nowrap; }
 
 .table-wrap { overflow: auto; max-height: 72vh; background: var(--surface); border: 1px solid var(--grid); border-radius: 10px; }
 table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
@@ -145,9 +155,33 @@ td.ind { color: var(--ink-3); max-width: 180px; overflow: hidden; text-overflow:
 .chart-head h2 { margin: 0; font: 800 26px/1.1 var(--display); letter-spacing: -0.01em; }
 .chart-sub { margin: 4px 0 0; color: var(--ink-2); font-size: 13.5px; }
 .close { display: none; background: none; border: 1px solid var(--grid); color: var(--ink); border-radius: 8px; width: 36px; height: 36px; font-size: 16px; cursor: pointer; }
-.readout { min-height: 20px; margin: 10px 0 4px; font-size: 12.5px; color: var(--ink-2); display: flex; flex-wrap: wrap; gap: 4px 12px; }
+.chart-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; margin: 10px 0 4px; }
+.zoom { display: inline-flex; align-items: center; gap: 1px; border: 1px solid var(--grid); border-radius: 8px; padding: 2px; }
+.zoom button { padding: 5px 8px; font-size: 12.5px; }
+.zoom #zoomIn, .zoom #zoomOut { font-size: 15px; width: 30px; padding: 4px 0; }
+.zoom-sep { width: 1px; height: 18px; background: var(--grid); margin: 0 3px; }
+.hint { margin: 6px 0 0; font-size: 12px; color: var(--ink-3); }
+.readout { min-height: 20px; font-size: 12.5px; color: var(--ink-2); display: flex; flex-wrap: wrap; gap: 4px 12px; }
 .readout b { color: var(--ink); font-weight: 600; }
-#chart { width: 100%; height: 470px; display: block; touch-action: pan-y; }
+#chart { width: 100%; height: 470px; display: block; touch-action: none; cursor: crosshair; }
+canvas.grabbing { cursor: grabbing !important; }
+
+/* Charts-only grid */
+.grid { --per-row: 2; display: grid; grid-template-columns: repeat(var(--per-row), minmax(0, 1fr)); gap: 16px; }
+.grid[hidden] { display: none; }
+.card { background: var(--surface); border: 1px solid var(--grid); border-radius: 10px; padding: 12px 12px 8px; min-width: 0; }
+.card-head { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 12px; }
+.card-sym { appearance: none; border: 0; background: none; padding: 0; color: var(--ink); font: 800 19px/1.1 var(--display); cursor: pointer; }
+.card-sym:hover { text-decoration: underline; }
+.card-px { font-size: 13.5px; color: var(--ink); }
+.card-rs { font-size: 12.5px; font-weight: 600; color: var(--saffron-ink); background: var(--saffron-wash); padding: 2px 7px; border-radius: 5px; }
+.card-head a { margin-left: auto; font-size: 12.5px; color: var(--ink-3); }
+.card-note { margin: 4px 0 6px; font-size: 12.5px; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+canvas.mini { width: 100%; height: 280px; display: block; touch-action: pan-y; cursor: grab; }
+.grid[style*="--per-row: 1"] canvas.mini { height: 420px; }
+.grid[style*="--per-row: 3"] canvas.mini { height: 230px; }
+.grid-hint { display: none; margin: 10px 0 0; font-size: 12.5px; color: var(--ink-3); }
+.grid:not([hidden]) + .grid-hint { display: block; }
 .legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; color: var(--ink-2); margin-top: 8px; }
 .legend i { display: inline-block; width: 14px; height: 0; border-top: 2px solid; vertical-align: middle; margin-right: 5px; }
 .legend .k-sma50 { border-color: var(--sma50); }
@@ -180,17 +214,23 @@ td.ind { color: var(--ink-3); max-width: 180px; overflow: hidden; text-overflow:
   .close { display: block; }
   #chart { height: 400px; }
   .how dl { grid-template-columns: 1fr 1fr; }
+  .grid { --per-row: 1 !important; grid-template-columns: 1fr; }
+  #perRow { display: none; }
 }
 @media (max-width: 720px) {
   .top { padding: 14px 16px; flex-wrap: wrap; }
   .links { gap: 14px; font-size: 13px; }
   main { padding: 0 16px; }
-  .screens { grid-template-columns: repeat(5, minmax(96px, 1fr)); overflow-x: auto; scrollbar-width: none; }
+  .screens { grid-template-columns: repeat(6, minmax(96px, 1fr)); overflow-x: auto; scrollbar-width: none; }
   .screen { padding-right: 10px; }
   .screen + .screen { padding-left: 10px; }
   .table-wrap { max-height: none; }
   .how dl { grid-template-columns: 1fr; }
   #chart { height: 340px; }
+  .tool-right { margin-left: 0; width: 100%; }
+  .search input { width: 100%; }
+  .search { flex: 1; min-width: 0; }
+  canvas.mini { height: 260px; }
   .foot { padding: 20px 16px 40px; }
 }
 @media (prefers-reduced-motion: reduce) {
