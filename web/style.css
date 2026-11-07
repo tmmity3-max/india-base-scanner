@@ -295,34 +295,41 @@ canvas.mini { width: 100%; height: 340px; display: block; touch-action: pan-y; c
 .advisory li::marker { color: var(--down); font-weight: 700; }
 @media (max-width: 720px) { .advisory ol { grid-template-columns: 1fr; } }
 
-/* Side rail: page switcher */
+/* Side rail: page switcher. Hidden at the left edge; slides in when the
+   pointer reaches the edge (or a rail link gets keyboard focus). */
+.rail-wrap { position: fixed; inset: 0 auto 0 0; width: 12px; z-index: 40; }
+.rail-wrap::after {   /* thin hint line so people know something is there */
+  content: ""; position: absolute; left: 0; top: 50%; transform: translateY(-50%);
+  width: 4px; height: 72px; border-radius: 0 4px 4px 0; background: var(--saffron); opacity: .7;
+  transition: opacity .2s;
+}
 .rail {
-  position: fixed; inset: 0 auto 0 0; width: 84px; z-index: 40;
+  position: fixed; inset: 0 auto 0 0; width: 92px;
   background: var(--surface); border-right: 1px solid var(--grid);
-  display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 14px 0;
+  box-shadow: 6px 0 24px rgba(10, 20, 40, .28);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 14px 0;
+  transform: translateX(-100%); transition: transform .18s ease-out;
 }
-.rail-brand svg { width: 36px; height: 36px; display: block; margin-bottom: 14px; }
-.rail-brand rect { fill: var(--ink); }
-.rail-brand path { fill: none; stroke: var(--saffron); stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; }
+.rail-wrap:hover .rail, .rail-wrap:focus-within .rail { transform: none; }
+.rail-wrap:hover::after, .rail-wrap:focus-within::after { opacity: 0; }
 .rail-btn {
-  position: relative; width: 70px; padding: 10px 4px 8px; border-radius: 10px;
-  display: flex; flex-direction: column; align-items: center; gap: 5px;
-  color: var(--ink-3); text-decoration: none; font: 600 11.5px/1.1 var(--body);
+  position: relative; width: 76px; padding: 12px 4px 10px; border-radius: 10px;
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  color: var(--ink-3); text-decoration: none; font: 600 12px/1.1 var(--body);
 }
-.rail-btn svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 1.7; }
+.rail-btn svg { width: 26px; height: 26px; fill: none; stroke: currentColor; stroke-width: 1.7; }
 .rail-btn:hover { color: var(--ink); background: var(--row-hover); }
 .rail-btn[aria-current="page"] { color: var(--ink); background: var(--saffron-wash); }
 .rail-btn[aria-current="page"] svg { stroke: var(--saffron-ink); }
 .rail-btn[aria-current="page"]::before {
-  content: ""; position: absolute; left: -7px; top: 10px; bottom: 10px; width: 4px; border-radius: 0 3px 3px 0; background: var(--saffron);
+  content: ""; position: absolute; left: -8px; top: 10px; bottom: 10px; width: 4px; border-radius: 0 3px 3px 0; background: var(--saffron);
 }
-body.has-rail { padding-left: 84px; }
-body.has-rail .top .brand svg { display: none; }
-@media (max-width: 720px) {
-  .rail { inset: auto 0 0 0; width: auto; height: 62px; flex-direction: row; justify-content: center; gap: 24px; padding: 0; border-right: 0; border-top: 1px solid var(--grid); }
-  .rail-brand { display: none; }
+@media (prefers-reduced-motion: reduce) { .rail { transition: none; } }
+@media (max-width: 720px) {   /* phones: no hover, so a fixed bottom bar instead */
+  .rail-wrap { inset: auto 0 0 0; width: auto; height: 62px; }
+  .rail-wrap::after { display: none; }
+  .rail { inset: auto 0 0 0; width: auto; height: 62px; flex-direction: row; gap: 24px; padding: 0; border-right: 0; border-top: 1px solid var(--grid); transform: none; box-shadow: none; }
   .rail-btn { width: 96px; padding: 7px 4px; }
   .rail-btn[aria-current="page"]::before { left: 20px; right: 20px; top: -1px; bottom: auto; width: auto; height: 3px; border-radius: 0 0 3px 3px; }
-  body.has-rail { padding-left: 0; padding-bottom: 62px; }
-  body.has-rail .top .brand svg { display: block; }
+  body.has-rail { padding-bottom: 62px; }
 }

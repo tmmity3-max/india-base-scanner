@@ -8,7 +8,7 @@
 
   const REPO_DATA = "https://raw.githubusercontent.com/tmmity3-max/india-base-scanner/data/";
   const LOCAL = /^(localhost|127\.|\[::1\])/.test(location.hostname);
-  const DATA = LOCAL ? "data/" : REPO_DATA;
+  let DATA = LOCAL ? "data/" : REPO_DATA;   // replaced in init() by the current data commit
 
   const SCREENS = {
     "VCP": "Tightening pullbacks with volume drying up, close to the pivot. Sorted by RS rating.",
@@ -509,6 +509,7 @@
     readHash();
     try {
       const bucket = Math.floor(Date.now() / 600000); // refresh at most every 10 minutes
+      DATA = await window.ibsDataBase();
       const r = await fetch(`${DATA}latest.json?v=${bucket}`, { cache: "no-cache" });
       if (!r.ok) throw new Error(r.status);
       state.data = await r.json();

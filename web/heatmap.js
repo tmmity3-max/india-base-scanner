@@ -3,7 +3,7 @@
   "use strict";
   const REPO_DATA = "https://raw.githubusercontent.com/tmmity3-max/india-base-scanner/data/";
   const LOCAL = /^(localhost|127\.|\[::1\])/.test(location.hostname);
-  const DATA = LOCAL ? "data/" : REPO_DATA;
+  let DATA = LOCAL ? "data/" : REPO_DATA;
   const $ = (id) => document.getElementById(id);
   const nf2 = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 2, minimumFractionDigits: 2 });
   const nf0 = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
@@ -180,6 +180,7 @@
     for (const b of document.querySelectorAll("[data-size]")) b.addEventListener("click", () => { state.size = b.dataset.size; update(); });
     let t; window.addEventListener("resize", () => { clearTimeout(t); t = setTimeout(render, 120); });
     try {
+      DATA = await window.ibsDataBase();
       const r = await fetch(`${DATA}heatmap.json?v=${Math.floor(Date.now() / 600000)}`, { cache: "no-cache" });
       if (!r.ok) throw new Error(r.status);
       state.data = await r.json();
