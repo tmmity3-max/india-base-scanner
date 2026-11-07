@@ -9,6 +9,7 @@
     form.rsHi.value = s.rsHi;
     form.showRsMa.checked = !!s.showRsMa;
     form.showRsDots.checked = !!s.showRsDots;
+    form.chartType.value = s.chartType || "candles";
   }
   function clampInt(v, lo, hi, dflt) {
     const n = Math.round(Number(v));
@@ -24,6 +25,7 @@
       rsHi: clampInt(form.rsHi.value, 20, 400, d.rsHi),
       showRsMa: form.showRsMa.checked,
       showRsDots: form.showRsDots.checked,
+      chartType: form.chartType.value || "candles",
     };
     fill(s);
     msg.textContent = window.ibsSaveSettings(s)

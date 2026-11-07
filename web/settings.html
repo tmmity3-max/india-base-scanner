@@ -59,6 +59,14 @@
       </fieldset>
 
       <fieldset>
+        <legend>Chart style</legend>
+        <div class="bench-grid">
+          <label><input type="radio" name="chartType" value="candles"><span><b>Candles</b><small>Filled candlesticks</small></span></label>
+          <label><input type="radio" name="chartType" value="bars"><span><b>Bars</b><small>OHLC bars: open tick left, close tick right</small></span></label>
+        </div>
+      </fieldset>
+
+      <fieldset>
         <legend>RS line display</legend>
         <div class="field-row">
           <label class="num">RS moving average <input type="number" name="rsMa" min="5" max="200" step="1"> <span>days</span></label>

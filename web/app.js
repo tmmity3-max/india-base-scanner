@@ -140,6 +140,26 @@
     return c;
   }
 
+  function setChartType(t) {
+    SETTINGS.chartType = t;
+    if (window.ibsSaveSettings) window.ibsSaveSettings({ ...window.ibsSettings(), chartType: t });
+    for (const b of document.querySelectorAll("[data-chart-type]")) b.setAttribute("aria-pressed", b.dataset.chartType === t ? "true" : "false");
+    mainChart.draw();
+    for (const pc of gridCharts) pc.draw();
+  }
+  const gridCharts = new Set();
+
+  // Make the table end exactly where the chart panel ends (side-by-side layout only).
+  function syncHeights() {
+    const wrap = document.querySelector(".table-wrap"), panel = $("chartPanel");
+    if (!wrap || !panel) return;
+    const sideBySide = window.matchMedia("(min-width: 1081px)").matches && !$("workspace").hidden;
+    wrap.style.height = sideBySide ? `${panel.offsetHeight}px` : "";
+    wrap.style.maxHeight = sideBySide ? "none" : "";
+  }
+  new ResizeObserver(syncHeights).observe($("chartPanel"));
+  window.addEventListener("resize", syncHeights);
+
   async function loadChart(sym) {
     if (chartCache.has(sym)) return chartCache.get(sym);
     const v = state.data ? state.data.data_date : "";
@@ -392,13 +412,26 @@
       const lw = mini ? 1.1 : 1.4;
       line(c.sma200, css("--sma200"), Y, lw); line(c.sma150, css("--sma150"), Y, lw); line(c.sma50, css("--sma50"), Y, lw);
       if (this.showSma10) line(c.sma10, css("--sma10"), Y, lw);
+      const bars = SETTINGS.chartType === "bars";
+      const tick = Math.max(1.5, Math.min(6, step * 0.4));      // open/close tick length for OHLC bars
       for (let i = i0; i <= i1; i++) {
         const o = c.o[i], cl = c.c[i], col = cl >= o ? up : down;
-        ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineWidth = 1;
+        ctx.strokeStyle = col; ctx.fillStyle = col;
         const x = Math.round(X(i)) + 0.5;
-        ctx.beginPath(); ctx.moveTo(x, Y(c.h[i])); ctx.lineTo(x, Y(c.l[i])); ctx.stroke();
-        const top = Y(Math.max(o, cl)), h = Math.max(1, Math.abs(Y(o) - Y(cl)));
-        ctx.fillRect(X(i) - bw / 2, top, bw, h);
+        if (bars) {   // OHLC bar: high-low line, open tick left, close tick right
+          ctx.lineWidth = step > 6 ? 1.5 : 1;
+          ctx.beginPath();
+          ctx.moveTo(x, Y(c.h[i])); ctx.lineTo(x, Y(c.l[i]));
+          const yo = Math.round(Y(o)) + 0.5, yc = Math.round(Y(cl)) + 0.5;
+          ctx.moveTo(x - tick, yo); ctx.lineTo(x, yo);
+          ctx.moveTo(x, yc); ctx.lineTo(x + tick, yc);
+          ctx.stroke();
+        } else {
+          ctx.lineWidth = 1;
+          ctx.beginPath(); ctx.moveTo(x, Y(c.h[i])); ctx.lineTo(x, Y(c.l[i])); ctx.stroke();
+          const top = Y(Math.max(o, cl)), h = Math.max(1, Math.abs(Y(o) - Y(cl)));
+          ctx.fillRect(X(i) - bw / 2, top, bw, h);
+        }
       }
 
       // key levels: merge near-equal prices, stagger labels
@@ -597,6 +630,10 @@
     $("zoomReset").addEventListener("click", () => mainChart.reset());
     for (const b of document.querySelectorAll("[data-range]")) b.addEventListener("click", () => mainChart.show(+b.dataset.range));
     $("scaleAuto").addEventListener("click", () => mainChart.setAuto(!mainChart.auto));
+    for (const b of document.querySelectorAll("[data-chart-type]")) {
+      b.setAttribute("aria-pressed", b.dataset.chartType === (SETTINGS.chartType || "candles") ? "true" : "false");
+      b.addEventListener("click", () => setChartType(b.dataset.chartType));
+    }
     $("pineCopy").addEventListener("click", copyPine);
     $("scaleLog").addEventListener("click", () => mainChart.setLog(!mainChart.log));
   }
@@ -653,6 +690,7 @@
     $("workspace").hidden = view !== "table";
     $("grid").hidden = view !== "charts";
     $("perRow").hidden = view !== "charts";
+    requestAnimationFrame(syncHeights);
     if (!initial) {
       refreshList();
       if (view === "table") {
@@ -872,6 +910,7 @@
   function renderGrid(list) {
     const grid = $("grid");
     if (gridObserver) gridObserver.disconnect();
+    gridCharts.clear();
     grid.innerHTML = "";
     setPerRow(state.perRow);
     gridObserver = new IntersectionObserver((entries) => {
@@ -880,6 +919,7 @@
         gridObserver.unobserve(en.target);
         const card = en.target, sym = card.dataset.symbol;
         const pc = new PriceChart(card.querySelector("canvas"), { mini: true });
+        gridCharts.add(pc);
         card.querySelector('[data-act="in"]').addEventListener("click", () => pc.zoom(1 / 1.3));
         card.querySelector('[data-act="out"]').addEventListener("click", () => pc.zoom(1.3));
         card.querySelector('[data-act="reset"]').addEventListener("click", () => pc.reset());
