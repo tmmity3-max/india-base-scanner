@@ -135,8 +135,51 @@ def write_site_data(result: ibs.ScanResult, data: dict, out_dir: str,
     return latest
 
 
+HEATMAP_INDICES = ("NIFTY50", "NIFTYNEXT50", "MIDCAP150", "SMALLCAP250")
+# Yahoo Finance symbols for the index levels (tried in order)
+INDEX_TICKERS = {
+    "NIFTY50": ["^NSEI"],
+    "NIFTYNEXT50": ["^NSMIDCP", "NIFTY_NEXT_50.NS"],
+    "MIDCAP150": ["NIFTYMIDCAP150.NS", "NIFTY_MIDCAP_150.NS"],
+    "SMALLCAP250": ["NIFTYSMLCAP250.NS", "NIFTY_SMLCAP_250.NS"],
+}
+
+
+def index_returns(members: dict, data: dict, fund: dict) -> dict:
+    """1D/1W/1M/3M return per index: from the index itself on Yahoo, or, if that
+    isn't available, estimated as the market-cap-weighted return of its members."""
+    periods = {"d1": 1, "w1": 5, "m1": 21, "m3": 63}
+    out = {}
+    for idx in HEATMAP_INDICES:
+        row = None
+        for tk in INDEX_TICKERS.get(idx, []):
+            try:
+                s = ibs.download_benchmark(tk, period="1y")
+            except Exception:
+                s = None
+            if s is not None and len(s) > 64:
+                row = {"level": _clean(float(s.iloc[-1])), "source": "index",
+                       **{k: _clean((s.iloc[-1] / s.iloc[-1 - n] - 1) * 100) for k, n in periods.items()}}
+                break
+        if row is None and idx in members:
+            row = {"level": None, "source": "estimate"}
+            for k, n in periods.items():
+                num = den = 0.0
+                for sym in members[idx]["symbol"]:
+                    df, mc = data.get(sym), fund.get(sym, {}).get("market_cap_cr")
+                    if df is None or not mc or len(df) <= n:
+                        continue
+                    c = df["Close"]
+                    num += mc * (c.iloc[-1] / c.iloc[-1 - n] - 1)
+                    den += mc
+                row[k] = _clean(num / den * 100) if den else None
+        if row:
+            out[idx] = row
+    return out
+
+
 def write_heatmap(data: dict, fund: dict, out_dir: str, members: dict) -> dict:
-    """NIFTY 50 / NIFTY Next 50 heatmap: % change over 1 day, 1 week, 1 month, sized by market cap."""
+    """Index heatmaps: % change over 1 day to 3 months, sized by market cap, plus index returns."""
     def chg(c, k):
         return _clean((c.iloc[-1] / c.iloc[-1 - k] - 1) * 100) if len(c) > k else None
     out = {"generated_at": datetime.now(IST).isoformat(timespec="minutes"), "indices": {}}
@@ -156,6 +199,7 @@ def write_heatmap(data: dict, fund: dict, out_dir: str, members: dict) -> dict:
                          "turnover_cr": _clean(float((c * df["Volume"]).tail(20).mean()) / 1e7)})
         out["indices"][idx] = rows
     out["data_date"] = max(dates).date().isoformat() if dates else None
+    out["index_returns"] = index_returns(members, data, fund)
     with open(os.path.join(out_dir, "heatmap.json"), "w") as fh:
         json.dump(out, fh, separators=(",", ":"))
     return out
@@ -193,10 +237,10 @@ def main():
     bench = ibs.download_benchmark(args.benchmark, period=args.period)
     result = ibs.scan(data, ibs.ScanConfig(), uni, bench)
 
-    # heatmap members (NIFTY 50 and NIFTY Next 50); download any not already loaded
+    # heatmap members (NIFTY 50, Next 50, Midcap 150, Smallcap 250); download any not already loaded
     members = {}
     import warnings
-    for idx in ("NIFTY50", "NIFTYNEXT50"):
+    for idx in HEATMAP_INDICES:
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter("always")
             m = ibs.get_universe(idx)

@@ -12,7 +12,8 @@
   const state = { data: null, index: "NIFTY50", period: "d1", size: "mcap" };
 
   const p = new URLSearchParams(location.hash.slice(1));
-  if (["NIFTY50", "NIFTYNEXT50", "BOTH"].includes(p.get("index"))) state.index = p.get("index");
+  const INDEX_NAMES = { NIFTY50: "NIFTY 50", NIFTYNEXT50: "NIFTY Next 50", MIDCAP150: "NIFTY Midcap 150", SMALLCAP250: "NIFTY Smallcap 250" };
+  if (INDEX_NAMES[p.get("index")]) state.index = p.get("index");
   if (RANGE[p.get("period")]) state.period = p.get("period");
 
   const mcapText = (cr) => cr == null ? "–" : cr >= 100000 ? `₹${nf2.format(cr / 100000)} lakh cr` : `₹${nf0.format(cr)} cr`;
@@ -62,16 +63,14 @@
   }
 
   function rows() {
-    const ix = state.data.indices || {};
-    if (state.index === "BOTH") return [...(ix.NIFTY50 || []), ...(ix.NIFTYNEXT50 || [])];
-    return ix[state.index] || [];
+    return (state.data.indices || {})[state.index] || [];
   }
 
   function render() {
     const box = $("hm"), W = box.clientWidth, H = box.clientHeight;
     box.innerHTML = "";
     const list = rows().filter((r) => r.close != null);
-    const title = state.index === "BOTH" ? "NIFTY 50 and NIFTY Next 50 heatmap" : state.index === "NIFTY50" ? "NIFTY 50 heatmap" : "NIFTY Next 50 heatmap";
+    const title = `${INDEX_NAMES[state.index]} heatmap`;
     $("hmTitle").textContent = title;
     document.title = `${title} – India Base Scanner`;
     if (!list.length) {
@@ -147,8 +146,30 @@
   function press(attr, v) {
     for (const b of document.querySelectorAll(`[data-${attr}]`)) b.setAttribute("aria-pressed", b.dataset[attr] === v ? "true" : "false");
   }
+  function cards() {
+    const box = $("idxCards"), ret = (state.data && state.data.index_returns) || {};
+    box.innerHTML = "";
+    for (const idx of Object.keys(INDEX_NAMES)) {
+      const r = ret[idx];
+      const b = document.createElement("button");
+      b.type = "button"; b.className = "idx-card"; b.dataset.index = idx;
+      b.setAttribute("aria-pressed", idx === state.index ? "true" : "false");
+      const main = r ? r[state.period] : null;
+      const cls = (v) => (v == null ? "" : v >= 0 ? "pos" : "neg");
+      b.innerHTML =
+        `<div class="idx-name">${INDEX_NAMES[idx]}</div>` +
+        `<div class="idx-level">${r && r.level != null ? nf2.format(r.level) : r && r.source === "estimate" ? "Estimated from members" : ""}</div>` +
+        `<div class="idx-main ${cls(main)}">${signed(main)}</div>` +
+        `<div class="idx-sub">${["d1", "w1", "m1", "m3"].map((k) => `<div class="${k === state.period ? "on" : ""}"><span>${{ d1: "1D", w1: "1W", m1: "1M", m3: "3M" }[k]}</span><b class="${cls(r && r[k])}">${signed(r ? r[k] : null)}</b></div>`).join("")}</div>`;
+      b.title = `Show the ${INDEX_NAMES[idx]} heatmap`;
+      b.addEventListener("click", () => { state.index = idx; update(); });
+      box.appendChild(b);
+    }
+  }
+
   function update() {
     press("index", state.index); press("period", state.period); press("size", state.size);
+    cards();
     history.replaceState(null, "", `#index=${state.index}&period=${state.period}`);
     legend(); render();
   }

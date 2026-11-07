@@ -14,14 +14,27 @@
   <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Public+Sans:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
 </head>
-<body>
+<body class="has-rail">
+  <nav class="rail" aria-label="Pages">
+    <a class="rail-brand" href="/" aria-label="India Base Scanner">
+      <svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="7"/><path d="M6 22h6l3-9 3 5 3-7 5 11"/></svg>
+    </a>
+    <a class="rail-btn" href="/" data-page="dashboard" aria-current="page">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="8" height="10" rx="1.5"/><rect x="13" y="3" width="8" height="6" rx="1.5"/><rect x="13" y="11" width="8" height="10" rx="1.5"/><rect x="3" y="15" width="8" height="6" rx="1.5"/></svg>
+      <span>Dashboard</span>
+    </a>
+    <a class="rail-btn" href="heatmap.html" data-page="heatmap">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="11" height="11" rx="1"/><rect x="15" y="3" width="6" height="6" rx="1"/><rect x="15" y="10" width="6" height="4" rx="1"/><rect x="3" y="15" width="6" height="6" rx="1"/><rect x="10" y="15" width="11" height="6" rx="1"/></svg>
+      <span>Heatmap</span>
+    </a>
+  </nav>
+
   <header class="top">
     <a class="brand" href="/" aria-label="India Base Scanner home">
       <svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="7"/><path d="M6 22h6l3-9 3 5 3-7 5 11"/></svg>
       <span>India Base Scanner</span>
     </a>
     <nav class="links">
-      <a href="heatmap.html">Heatmap</a>
       <a href="https://colab.research.google.com/github/tmmity3-max/india-base-scanner/blob/main/India_Base_Scanner.ipynb" target="_blank" rel="noopener">Run your own scan in Colab</a>
       <a href="https://github.com/tmmity3-max/india-base-scanner" target="_blank" rel="noopener">GitHub</a>
     </nav>
@@ -31,10 +44,6 @@
     <section class="intro">
       <h1 id="headline">Today's setups</h1>
       <p id="meta" class="meta">Loading the latest scan…</p>
-      <a class="heat-link" href="heatmap.html">
-        <span class="heat-swatch" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></span>
-        NIFTY 50 and Next 50 heatmap
-      </a>
     </section>
 
     <nav class="screens" id="screens" role="tablist" aria-label="Screens"></nav>

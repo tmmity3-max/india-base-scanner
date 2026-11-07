@@ -32,3 +32,24 @@
   .hm { height: 640px; }
   .hm-legend { margin-left: 0; }
 }
+
+/* Header with index return cards */
+.hm-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; flex-wrap: wrap; }
+.hm-head .intro { flex: 1 1 380px; }
+.idx-cards { display: grid; grid-template-columns: repeat(4, minmax(150px, 1fr)); gap: 10px; flex: 2 1 640px; padding-bottom: 8px; }
+.idx-card {
+  appearance: none; text-align: left; cursor: pointer; font: inherit; color: var(--ink);
+  background: var(--surface); border: 1px solid var(--grid); border-radius: 10px; padding: 10px 12px;
+}
+.idx-card:hover { border-color: var(--ink-3); }
+.idx-card[aria-pressed="true"] { border-color: var(--saffron); box-shadow: inset 0 0 0 1px var(--saffron); }
+.idx-name { font: 700 13.5px/1.2 var(--display); color: var(--ink-2); }
+.idx-level { font-size: 12px; color: var(--ink-3); margin-top: 1px; min-height: 1.3em; }
+.idx-main { font: 800 26px/1.15 var(--display); letter-spacing: -0.02em; margin-top: 2px; }
+.idx-sub { display: grid; grid-template-columns: repeat(4, auto); justify-content: space-between; gap: 4px; margin-top: 6px; font-size: 11.5px; }
+.idx-sub span { color: var(--ink-3); }
+.idx-sub b { display: block; font-weight: 600; font-size: 12.5px; }
+.idx-sub .on span { color: var(--saffron-ink); }
+@media (max-width: 1100px) { .idx-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); flex-basis: 100%; } }
+
+.hm-head .intro h1 { font-size: clamp(28px, 3.2vw, 44px); max-width: none; }
