@@ -111,17 +111,54 @@
       const tiles = squarify(s.items.map((r) => ({ r, value: val(r) })), s.x, s.y + head, s.w, s.h - head);
       for (const t of tiles) {
         const r = t.r, a = document.createElement("a");
-        a.className = "hm-tile" + (t.w < 34 || t.h < 22 ? " tiny" : t.w < 64 || t.h < 38 ? " small" : t.w > 160 && t.h > 90 ? " big" : "");
+        a.className = "hm-tile";
         a.href = `https://www.tradingview.com/chart/?symbol=NSE%3A${encodeURIComponent(r.symbol)}`;
         a.target = "_blank"; a.rel = "noopener";
         a.setAttribute("aria-label", `${r.symbol} ${signed(r[k])}`);
         Object.assign(a.style, { left: t.x + "px", top: t.y + "px", width: t.w + "px", height: t.h + "px", background: color(r[k]) });
-        a.innerHTML = `<span class="s">${r.symbol}</span><span class="p">${signed(r[k])}</span>`;
+        const f = fitLabel(r.symbol, t.w, t.h);
+        if (f) {
+          a.innerHTML = `<span class="s" style="font-size:${f.fs}px">${f.parts.join("<br>")}</span>` +
+            (f.pct ? `<span class="p" style="font-size:${f.pctFs}px">${signed(r[k])}</span>` : "");
+        }
         a.addEventListener("mousemove", (e) => tip(e, r));
         a.addEventListener("mouseleave", () => ($("hmTip").hidden = true));
         box.appendChild(a);
       }
     }
+  }
+
+  // Pick a font size so the symbol fits the tile, measuring the real text
+  // width and splitting long names onto up to three lines when the tile is
+  // narrow but tall enough.
+  const measureCtx = document.createElement("canvas").getContext("2d");
+  let symFont = null;
+  function textW(t, fs) {
+    if (!symFont) symFont = getComputedStyle(document.documentElement).getPropertyValue("--display").trim() || "sans-serif";
+    measureCtx.font = `700 100px ${symFont}`;
+    return (measureCtx.measureText(t).width / 100) * fs;
+  }
+  function split(sym, lines) {
+    const n = Math.ceil(sym.length / lines), out = [];
+    for (let i = 0; i < sym.length; i += n) out.push(sym.slice(i, i + n));
+    return out;
+  }
+  function fitLabel(sym, w, h) {
+    const LH = 1.1, availW = (w - 8) * 0.9, availH = h - 6;   // 10% margin: bold text renders a little wider
+    let best = null;
+    const maxLines = sym.length >= 10 ? 3 : sym.length >= 7 ? 2 : 1;   // never split short names
+    for (let lines = 1; lines <= maxLines; lines++) {
+      const parts = split(sym, lines);
+      const widest = Math.max(...parts.map((t) => textW(t, 1)));
+      let fs = Math.min(19, availW / widest, availH / (LH * parts.length));
+      if (fs < 7) continue;
+      if (lines > 1 && best && fs < best.fs * 1.15) continue;   // only wrap if it really helps
+      best = { fs, parts };
+    }
+    if (!best) return null;                                       // too small to read: tooltip only
+    const pctFs = Math.max(8, best.fs * 0.82);
+    const pct = availH >= best.fs * LH * best.parts.length + pctFs * 1.15 && availW >= textW("+00.00%", pctFs) * 0.8;
+    return { fs: +best.fs.toFixed(1), parts: best.parts, pct, pctFs: +pctFs.toFixed(1) };
   }
 
   function tip(e, r) {
