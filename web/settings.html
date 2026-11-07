@@ -10,6 +10,10 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Public+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  <script>
+    try { var t = (JSON.parse(localStorage.getItem("ibs-settings") || "{}").theme) || "system";
+      if (t === "light" || t === "dark") document.documentElement.setAttribute("data-theme", t); } catch (e) {}
+  </script>
   <link rel="stylesheet" href="style.css">
 </head>
 <body class="has-rail">
@@ -55,6 +59,15 @@
           <label><input type="radio" name="rsBench" value="NIFTY500"><span><b>NIFTY 500</b><small>The broad market</small></span></label>
           <label><input type="radio" name="rsBench" value="MIDCAP150"><span><b>NIFTY Midcap 150</b><small>For mid caps</small></span></label>
           <label><input type="radio" name="rsBench" value="SMALLCAP250"><span><b>NIFTY Smallcap 250</b><small>For small caps</small></span></label>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Theme</legend>
+        <div class="bench-grid theme-grid">
+          <label><input type="radio" name="theme" value="system"><span><b>System</b><small>Follow your device's light or dark setting</small></span></label>
+          <label><input type="radio" name="theme" value="light"><span class="sw sw-light"><b>Light</b><small>Light background</small></span></label>
+          <label><input type="radio" name="theme" value="dark"><span class="sw sw-dark"><b>Dark</b><small>Dark background</small></span></label>
         </div>
       </fieldset>
 

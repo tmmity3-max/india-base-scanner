@@ -23,8 +23,10 @@
   --body: "Public Sans", "Segoe UI", system-ui, sans-serif;
   color-scheme: light;
 }
+/* Dark theme: follows the device unless the viewer picked Light or Dark in Settings */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
+
     --paper: #0E1729;
     --surface: #15213A;
     --ink: #E9EEF6;
@@ -47,6 +49,29 @@
     color-scheme: dark;
   }
 }
+:root[data-theme="dark"] {
+  --paper: #0E1729;
+  --surface: #15213A;
+  --ink: #E9EEF6;
+  --ink-2: #B3BED2;
+  --ink-3: #8090AA;
+  --grid: #26344F;
+  --saffron: #F0AE4A;
+  --saffron-ink: #F6C77E;
+  --saffron-wash: #2C2716;
+  --up: #3DBB82;
+  --down: #E8665D;
+  --sma10: #3CC9AE;
+  --sma50: #6FA0F0;
+  --sma150: #F0A050;
+  --sma200: #B18BE6;
+  --rs: #5B8CFF;
+  --rs-ma: #FFA726;
+  --rs-lead: #EA80FC;
+  --row-hover: #1C2A47;
+  color-scheme: dark;
+}
+:root[data-theme="light"] { color-scheme: light; }
 
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
@@ -371,3 +396,10 @@ canvas.mini { width: 100%; height: 340px; display: block; touch-action: pan-y; c
 .type-btn { width: 30px; padding: 4px 0 !important; display: inline-flex; align-items: center; justify-content: center; }
 .type-btn svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.4; }
 .zoom .type-btn[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
+
+.theme-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.theme-grid .sw { position: relative; padding-left: 42px; }
+.theme-grid .sw::before { content: ""; position: absolute; left: 14px; top: 50%; transform: translateY(-50%); width: 18px; height: 18px; border-radius: 5px; border: 1px solid var(--grid); }
+.theme-grid .sw-light::before { background: #F4F6F9; }
+.theme-grid .sw-dark::before { background: #0E1729; }
+@media (max-width: 720px) { .theme-grid { grid-template-columns: 1fr; } }

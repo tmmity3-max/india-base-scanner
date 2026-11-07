@@ -10,12 +10,15 @@
     form.showRsMa.checked = !!s.showRsMa;
     form.showRsDots.checked = !!s.showRsDots;
     form.chartType.value = s.chartType || "candles";
+    form.theme.value = s.theme || "system";
   }
   function clampInt(v, lo, hi, dflt) {
     const n = Math.round(Number(v));
     return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : dflt;
   }
   fill(window.ibsSettings());
+  // preview the theme as soon as it's picked; Save keeps it
+  for (const r of form.querySelectorAll('input[name="theme"]')) r.addEventListener("change", () => window.ibsApplyTheme(r.value));
   form.addEventListener("submit", (e) => {
     e.preventDefault();
     const d = window.IBS_SETTING_DEFAULTS;
@@ -26,7 +29,9 @@
       showRsMa: form.showRsMa.checked,
       showRsDots: form.showRsDots.checked,
       chartType: form.chartType.value || "candles",
+      theme: form.theme.value || "system",
     };
+    window.ibsApplyTheme(s.theme);
     fill(s);
     msg.textContent = window.ibsSaveSettings(s)
       ? `Saved. Charts now draw the RS line against the ${window.IBS_BENCH_NAMES[s.rsBench]}.`
@@ -34,6 +39,7 @@
   });
   document.getElementById("resetSettings").addEventListener("click", () => {
     fill(window.IBS_SETTING_DEFAULTS);
+    window.ibsApplyTheme(window.IBS_SETTING_DEFAULTS.theme);
     msg.textContent = "Defaults restored. Click Save settings to keep them.";
   });
 })();
