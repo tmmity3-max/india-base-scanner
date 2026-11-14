@@ -370,10 +370,24 @@ class ScanConfig:
     base_min_depth: float = 5.0           # % pullback needed to call it a base
     base_max_depth: float = 35.0          # deeper than this cancels the base
     base_trend_filter: bool = True        # breakout must close above the 50 and 200 SMA
-    base_max_below_pivot: float = 5.0     # % below pivot still listed as "forming"
+    base_max_below_pivot: float = 7.0     # % below pivot still listed as "forming"
+    base_max_above_pivot: float = 7.0     # % above pivot still listed as a breakout
+    base_min_rs: float = 65.0             # RS rating needed for the screen
+    base_min_mcap_cr: float = 2000.0      # market cap, ₹ crore (needs fundamentals; see apply_market_cap_filter)
     base_signal_days: int = 5             # list breakouts from the last N sessions
     base_squat_pct: float = 40.0          # breakout closing in the lower N% of its bar = squat
     base_history_bars: int = 1260         # bars of history the base count is built from (~5 years)
+
+    # --- Ichimoku cloud breakout ---
+    ich_tenkan: int = 9
+    ich_kijun: int = 26
+    ich_senkou_b: int = 52
+    ich_displacement: int = 26
+    ich_signal_days: int = 5              # list breakouts from the last N sessions
+    ich_lookback: int = 10                # bars before the breakout that are checked
+    ich_min_bars_not_above: int = 8       # of those, how many must have closed in or below the cloud
+    ich_require_tk: bool = True           # Tenkan above Kijun
+    ich_require_chikou: bool = True       # close above the close 26 bars ago
 
     # --- Shared ---
     breakout_window: int = 5              # bars in which a breakout counts as "recent"
@@ -503,7 +517,8 @@ def find_base(df: pd.DataFrame, cfg: ScanConfig) -> dict:
     ``base_max_depth``. A close above the pivot is the breakout; the base
     count goes up by one, or restarts at 1 when the base undercut the low of
     the previous base. A stock is listed while a base is forming close to its
-    pivot, or for ``base_signal_days`` after a breakout that is still holding.
+    pivot, or for ``base_signal_days`` after a breakout that is still holding
+    and not yet extended beyond ``base_max_above_pivot``.
     """
     out = {"base_bo": False, "base_state": "", "base_no": 0, "base_pivot": np.nan,
            "base_pct_from_pivot": np.nan, "base_weeks": np.nan, "base_depth": np.nan,
@@ -570,7 +585,8 @@ def find_base(df: pd.DataFrame, cfg: ScanConfig) -> dict:
 
     close = c[-1]
     if last is not None and (n - 1 - last["i"]) <= cfg.base_signal_days and close >= last["pivot"]:
-        out.update(base_bo=True, base_state="Breakout", base_no=last["no"],
+        out.update(base_bo=bool((close / last["pivot"] - 1) * 100 <= cfg.base_max_above_pivot),
+                   base_state="Breakout", base_no=last["no"],
                    base_pivot=round(last["pivot"], 2),
                    base_pct_from_pivot=round((close / last["pivot"] - 1) * 100, 2),
                    base_weeks=round(last["weeks"], 1), base_depth=round(last["depth"], 1),
@@ -584,6 +600,60 @@ def find_base(df: pd.DataFrame, cfg: ScanConfig) -> dict:
                    base_depth=round((peak - low) / peak * 100, 1),
                    base_tags="Sky" if peak_sky else "")
         out["base_bo"] = bool(dist >= -cfg.base_max_below_pivot)
+    return out
+
+
+def find_ichimoku(df: pd.DataFrame, cfg: ScanConfig) -> dict:
+    """Ichimoku cloud breakout: a close up through the top of the cloud.
+
+    The cloud under each bar is the Senkou A / B pair calculated
+    ``ich_displacement - 1`` bars earlier, as charting platforms draw it. The
+    breakout bar is the latest close above the cloud top after a close at or
+    below it. It counts when it happened in the last ``ich_signal_days``
+    sessions, every close since has stayed above the cloud, and at least
+    ``ich_min_bars_not_above`` of the ``ich_lookback`` bars before it closed in
+    or below the cloud (a real breakout, not a dip of a stock already above).
+    Optional confirmations: Tenkan above Kijun, and the close above the close
+    26 bars ago (the Chikou span clear of price).
+    """
+    out = {"ichimoku": False, "ich_days_ago": np.nan, "ich_cloud_top": np.nan,
+           "ich_pct_above_cloud": np.nan, "ich_tk_bullish": False,
+           "ich_chikou_ok": False, "ich_future_cloud": "", "ich_from": ""}
+    n = len(df)
+    disp = cfg.ich_displacement
+    if n < cfg.ich_senkou_b + disp + cfg.ich_lookback + cfg.ich_signal_days:
+        return out
+    h, l, c = df["High"], df["Low"], df["Close"]
+    mid = lambda k: (h.rolling(k).max() + l.rolling(k).min()) / 2  # noqa: E731
+    tenkan, kijun = mid(cfg.ich_tenkan), mid(cfg.ich_kijun)
+    span_a, span_b = (tenkan + kijun) / 2, mid(cfg.ich_senkou_b)
+    top = np.maximum(span_a.shift(disp - 1), span_b.shift(disp - 1)).to_numpy(float)
+    bot = np.minimum(span_a.shift(disp - 1), span_b.shift(disp - 1)).to_numpy(float)
+    cv = c.to_numpy(float)
+    above = cv > top                               # False where the cloud is not known yet
+
+    close = cv[-1]
+    out.update(ich_cloud_top=round(float(top[-1]), 2) if top[-1] == top[-1] else np.nan,
+               ich_tk_bullish=bool(tenkan.iloc[-1] > kijun.iloc[-1]),
+               ich_chikou_ok=bool(close > cv[-1 - disp]),
+               ich_future_cloud="Bullish" if span_a.iloc[-1] > span_b.iloc[-1] else "Bearish")
+    if not above[-1]:
+        return out
+    out["ich_pct_above_cloud"] = round(float(close / top[-1] - 1) * 100, 2)
+    i = n - 1
+    while i > 0 and above[i - 1]:                  # walk back to the breakout bar
+        i -= 1
+    days_ago = n - 1 - i
+    if i < cfg.ich_lookback or days_ago > cfg.ich_signal_days or np.isnan(top[i - 1]):
+        return out
+    before = ~above[i - cfg.ich_lookback:i]
+    out["ich_days_ago"] = int(days_ago)
+    out["ich_from"] = "Below cloud" if cv[i - 1] < bot[i - 1] else "Inside cloud"
+    out["ichimoku"] = bool(
+        before.sum() >= cfg.ich_min_bars_not_above
+        and (not cfg.ich_require_tk or out["ich_tk_bullish"])
+        and (not cfg.ich_require_chikou or out["ich_chikou_ok"])
+    )
     return out
 
 
@@ -851,6 +921,9 @@ def analyze_stock(df: pd.DataFrame, cfg: ScanConfig,
 
     # --- Base Breakout ---
     m.update(find_base(df, cfg))
+
+    # --- Ichimoku cloud breakout ---
+    m.update(find_ichimoku(df, cfg))
     return m
 
 
@@ -878,6 +951,10 @@ SCREEN_COLUMNS = {
                       "base_pivot", "base_pct_from_pivot", "base_weeks", "base_depth",
                       "base_tags", "base_days_ago", "vol_ratio", "rs_line_new_high",
                       "turnover_cr", "pct_from_52w_high", "pct_above_52w_low"],
+    "Ichimoku": ["symbol", "industry", "close", "rs_rating", "ich_days_ago", "ich_from",
+                 "ich_cloud_top", "ich_pct_above_cloud", "ich_tk_bullish", "ich_chikou_ok",
+                 "ich_future_cloud", "vol_ratio", "rs_line_new_high", "turnover_cr",
+                 "pct_from_52w_high", "pct_above_52w_low"],
     "IPO Base": ["symbol", "industry", "close", "listed_days", "ipo_high",
                  "ipo_pct_from_high", "ipo_base_days", "ipo_depth", "vol_ratio",
                  "turnover_cr", "pct_from_52w_high", "pct_above_52w_low"],
@@ -927,12 +1004,14 @@ def apply_screens(metrics: pd.DataFrame, cfg: ScanConfig) -> Dict[str, pd.DataFr
         "Multi-Year Base": liquid & m["multiyear_base"],
         "IPO Base": liquid & m["ipo_base"],
         "Murphy": liquid & m["murphy"],
-        "Base Breakout": liquid & m["base_bo"],
+        "Base Breakout": liquid & m["base_bo"] & (m["rs_rating"].fillna(0) >= cfg.base_min_rs),
+        "Ichimoku": liquid & m["ichimoku"],
     }
     sort_by = {"Trend Template": "rs_rating", "VCP": "rs_rating", "Blue Sky": "rs_rating",
                "Multi-Year Base": "myb_base_years", "IPO Base": "ipo_base_days",
-               "Murphy": "murphy_days_ago", "Base Breakout": "base_pct_from_pivot"}
-    ascending = {"Murphy": True}  # newest signals first
+               "Murphy": "murphy_days_ago", "Base Breakout": "base_pct_from_pivot",
+               "Ichimoku": "ich_days_ago"}
+    ascending = {"Murphy": True, "Ichimoku": True}  # newest signals first
     out = {}
     for name, mask in masks.items():
         cols = [c for c in SCREEN_COLUMNS[name] if c in m.columns]
@@ -940,6 +1019,25 @@ def apply_screens(metrics: pd.DataFrame, cfg: ScanConfig) -> Dict[str, pd.DataFr
                      .sort_values(sort_by[name], ascending=ascending.get(name, False))
                      .reset_index(drop=True))
     return out
+
+
+def apply_market_cap_filter(result: "ScanResult", fund: Dict[str, dict]) -> "ScanResult":
+    """Drop Base Breakout rows below ``base_min_mcap_cr``, once fundamentals are known.
+
+    Market cap comes from ``fetch_fundamentals``, which runs after the price
+    scan, so this is a second pass. A stock whose market cap Yahoo did not
+    return is dropped too. If no market caps came back at all, nothing is
+    filtered, so a failed fetch does not empty the screen.
+    """
+    floor = result.config.base_min_mcap_cr
+    t = result.screens.get("Base Breakout")
+    if not floor or t is None or t.empty:
+        return result
+    cap = t["symbol"].map(lambda s: (fund or {}).get(s, {}).get("market_cap_cr"))
+    cap = pd.to_numeric(cap, errors="coerce")
+    if cap.notna().any():
+        result.screens["Base Breakout"] = t.loc[cap >= floor].reset_index(drop=True)
+    return result
 
 
 def scan(data: Dict[str, pd.DataFrame], cfg: Optional[ScanConfig] = None,

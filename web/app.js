@@ -14,12 +14,13 @@
     "VCP": "Tightening pullbacks with volume drying up, close to the pivot. Sorted by RS rating.",
     "Blue Sky": "At or breaking out to an all-time high, with strong relative strength.",
     "Murphy": "John Murphy's trend-following: above a rising 40-week SMA, with a fresh 10/50 crossover, 4-week-rule breakout or crossover + 2-week breakout in the last 5 sessions. Newest signals first.",
-    "Base Breakout": "Numbered bases with a pivot: at least 3 weeks below a high with a 5–35% pullback. Lists bases forming within 5% of the pivot and breakouts from the last 5 sessions that still hold. Closest to the pivot first.",
+    "Base Breakout": "Numbered bases with a pivot: at least 3 weeks below a high with a 5–35% pullback. Lists bases forming and breakouts from the last 5 sessions, within 7% of the pivot, with RS 65 or more and a market cap above ₹2,000 crore.",
+    "Ichimoku": "Closed up through the top of the Ichimoku cloud in the last 5 sessions and still above it, with Tenkan above Kijun and the Chikou span clear of price. Newest breakouts first.",
     "Multi-Year Base": "Back at a high that held for two years or more. Sorted by base length.",
     "IPO Base": "Recent listings basing just under their post-listing high.",
     "Trend Template": "Every liquid stock in a Stage-2 uptrend with RS 70 or more. The pool the VCP screen draws from.",
   };
-  const ORDER = ["VCP", "Blue Sky", "Murphy", "Base Breakout", "Multi-Year Base", "IPO Base", "Trend Template"];
+  const ORDER = ["VCP", "Blue Sky", "Murphy", "Base Breakout", "Ichimoku", "Multi-Year Base", "IPO Base", "Trend Template"];
 
   // column: [label, kind]  kind: txt | num | pct | signed | x | bool | int
   const COLS = {
@@ -48,6 +49,10 @@
     base_pivot: ["Pivot ₹", "num"], base_pct_from_pivot: ["From pivot %", "signed"],
     base_weeks: ["Base weeks", "num"], base_depth: ["Base depth %", "pct"],
     base_tags: ["Tags", "txt"], base_days_ago: ["Breakout days ago", "int"],
+    ich_days_ago: ["Days ago", "int"], ich_from: ["Broke out from", "txt"],
+    ich_cloud_top: ["Cloud top ₹", "num"], ich_pct_above_cloud: ["Above cloud %", "signed"],
+    ich_tk_bullish: ["Tenkan > Kijun", "bool"], ich_chikou_ok: ["Chikou clear", "bool"],
+    ich_future_cloud: ["Cloud ahead", "txt"],
   };
 
   const $ = (id) => document.getElementById(id);
@@ -908,6 +913,7 @@
       case "Blue Sky": return r.ath != null ? `All-time high ₹${nf2.format(r.ath)} (${signed(r.pct_from_ath)}%)` : "";
       case "Murphy": return r.murphy_signal ? `${r.murphy_signal}, ${r.murphy_days_ago === 0 ? "today" : r.murphy_days_ago + "d ago"}, entry ₹${nf2.format(r.murphy_entry)}` : "";
       case "Base Breakout": return r.base_pivot != null ? `${r.base_state} B${r.base_no}, pivot ₹${nf2.format(r.base_pivot)} (${signed(r.base_pct_from_pivot)}%), ${r.base_weeks}w${r.base_tags ? ", " + r.base_tags : ""}` : "";
+      case "Ichimoku": return r.ich_cloud_top != null ? `Cloud breakout ${r.ich_days_ago === 0 ? "today" : r.ich_days_ago + "d ago"}, cloud top ₹${nf2.format(r.ich_cloud_top)} (${signed(r.ich_pct_above_cloud)}%)` : "";
       case "Multi-Year Base": return r.myb_pivot != null ? `Old high ₹${nf2.format(r.myb_pivot)} held ${r.myb_base_years} years` : "";
       case "IPO Base": return r.ipo_high != null ? `Listing high ₹${nf2.format(r.ipo_high)} (${signed(r.ipo_pct_from_high)}%)` : "";
       default: return "";
