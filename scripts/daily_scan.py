@@ -83,7 +83,8 @@ def chart_payload(sym: str, df: pd.DataFrame, result: ibs.ScanResult, fund: dict
                              ("ipo_high", "ipo_base", "IPO high"),
                              ("ath", "bluesky", "All-time high"),
                              ("murphy_entry", "murphy", "Murphy entry"),
-                             ("base_pivot", "base_bo", "Base pivot")):
+                             ("base_pivot", "base_bo", "Base pivot"),
+                             ("ich_cloud_top", "ichimoku", "Cloud top")):
         val = row.get(key)
         if bool(row.get(flag, False)) and val == val and val is not None:
             levels.append({"label": label, "price": _clean(val)})
@@ -282,6 +283,7 @@ def main():
     print(f"Fetching fundamentals for {len(set(matched) | set(heat_syms))} stocks...")
     fund = ibs.fetch_fundamentals(sorted(set(matched) | set(heat_syms)))
     print(f"  got data for {sum(1 for v in fund.values() if v)} stocks")
+    ibs.apply_market_cap_filter(result, fund)      # Base Breakout: market cap floor
 
     latest = write_site_data(result, data, args.out, args.universe, args.benchmark, fund)
     write_heatmap(data, fund, args.out, members)

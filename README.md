@@ -4,7 +4,7 @@
 See today's setups on the website, or run your own scan in Google Colab. No installation, no account, no paid data.
 
 ### 🌐 Live site: **[india-base-scanner-web.vercel.app](https://india-base-scanner-web.vercel.app)**
-Updated automatically after every market close: VCP, Blue Sky, Murphy trend-following, Base Breakout, Multi-Year Base, IPO Base and Trend Template screens, zoomable charts with an RS line, fundamentals, and a NIFTY 50 / Next 50 / Midcap 150 / Smallcap 250 heatmap.
+Updated automatically after every market close: VCP, Blue Sky, Murphy trend-following, Base Breakout, Ichimoku cloud breakout, Multi-Year Base, IPO Base and Trend Template screens, zoomable charts with an RS line, fundamentals, and a NIFTY 50 / Next 50 / Midcap 150 / Smallcap 250 heatmap.
 
 [![Website](https://img.shields.io/badge/website-live-E39B2D)](https://india-base-scanner-web.vercel.app)
 [![Daily scan](https://github.com/tmmity3-max/india-base-scanner/actions/workflows/daily-scan.yml/badge.svg)](https://github.com/tmmity3-max/india-base-scanner/actions/workflows/daily-scan.yml)
@@ -21,7 +21,8 @@ Updated automatically after every market close: VCP, Blue Sky, Murphy trend-foll
 | **Trend Template** | Stage-2 uptrend: price above the 50, 150 and 200-day SMAs in that order, 200 SMA rising, within 25% of the 52-week high, RS rating ≥ 70 |
 | **VCP** | Volatility Contraction Pattern: 2+ pullbacks, each tighter than the last, volume drying up, price within 6% of the pivot |
 | **Blue Sky** | At or breaking out to an **all-time high**, so there is no overhead supply |
-| **Base Breakout** | Numbered bases (B1, B2, …) with a pivot: 3+ weeks below a high with a 5–35% pullback. Lists bases forming within 5% of the pivot and breakouts from the last 5 sessions |
+| **Base Breakout** | Numbered bases (B1, B2, …) with a pivot: 3+ weeks below a high with a 5–35% pullback. Lists bases forming and fresh breakouts within 7% of the pivot, RS ≥ 65, market cap above ₹2,000 crore |
+| **Ichimoku** | Cloud breakout: closed up through the top of the Ichimoku cloud in the last 5 sessions, with Tenkan above Kijun and the Chikou span clear of price |
 | **Multi-Year Base** | Breaking out of a high that held for **2+ years** |
 | **IPO Base** | Recent listings basing just under their post-listing high |
 | **Murphy** | John Murphy's positional trend-following: above a rising 40-week SMA, then a fresh 10/50 crossover, 4-week-rule breakout, or crossover + 2-week breakout |
@@ -124,10 +125,25 @@ Close within `bluesky_max_below_ath` (3%) of the all-time high, at least 3 years
 2. It becomes a base once price has spent `base_min_weeks` (3) below the pivot with a pullback between `base_min_depth` (5%) and `base_max_depth` (35%). A deeper pullback cancels it.
 3. A close above the pivot is the breakout. With `base_trend_filter` on, the close must also be above the 50 and 200-day SMAs.
 4. Bases are numbered B1, B2 and so on. The count restarts at 1 when a base undercuts the low of the base before it.
-5. Listed: bases forming within `base_max_below_pivot` (5%) of the pivot, and breakouts from the last `base_signal_days` (5) sessions that are still above the pivot.
-6. Tags: **Sky** (the pivot is an all-time high), **VCP** (the last third of the base is tight and 10-day volume is below the 50-day average; a looser test than the VCP screen), **Squat** (the breakout bar closed in the lower 40% of its range).
+5. Listed: bases forming within `base_max_below_pivot` (7%) of the pivot, and breakouts from the last `base_signal_days` (5) sessions that are still above the pivot and no more than `base_max_above_pivot` (7%) beyond it.
+6. Filters: RS rating of `base_min_rs` (65) or more, and a market cap of at least `base_min_mcap_cr` (₹2,000 crore). Market cap comes from Yahoo Finance after the price scan (`apply_market_cap_filter`), so it applies on the website; in the notebook it applies only if you fetch fundamentals and call that function. A stock with no market cap from Yahoo is dropped.
+7. Tags: **Sky** (the pivot is an all-time high), **VCP** (the last third of the base is tight and 10-day volume is below the 50-day average; a looser test than the VCP screen), **Squat** (the breakout bar closed in the lower 40% of its range).
 
 The same rules are in [`pine/base_breakout_pro.pine`](pine/base_breakout_pro.pine) for TradingView.
+
+</details>
+
+<details>
+<summary><b>Ichimoku cloud breakout</b></summary>
+
+Standard settings: Tenkan 9, Kijun 26, Senkou B 52, displacement 26. The cloud under each bar is the one calculated 25 bars earlier, as charting platforms draw it.
+
+1. The breakout bar is the latest close above the top of the cloud that followed a close at or below it.
+2. It must be within the last `ich_signal_days` (5) sessions, and every close since must have stayed above the cloud.
+3. At least `ich_min_bars_not_above` (8) of the `ich_lookback` (10) sessions before it closed in or below the cloud. This leaves out stocks that were already above the cloud and only dipped.
+4. Confirmations, both on by default: Tenkan above Kijun (`ich_require_tk`), and the close above the close 26 sessions ago, which is the Chikou span clear of price (`ich_require_chikou`).
+
+The table also shows whether the breakout came from inside or below the cloud, and whether the cloud ahead is bullish (Senkou A above Senkou B). Newest breakouts first.
 
 </details>
 

@@ -155,6 +155,47 @@ def test_base_not_in_downtrend():
     assert not ibs.find_base(downtrend_stock(), ibs.ScanConfig())["base_bo"]
 
 
+def test_base_extended_breakout_not_listed():
+    # same breakout, but already 12% above the pivot: too extended to list
+    df = make_series([(0, 100), (300, 200), (15, 176), (13, 198), (2, 225)], noise=0.002, seed=5)
+    out = ibs.find_base(df, ibs.ScanConfig())
+    assert out["base_state"] == "Breakout" and not out["base_bo"], out
+
+
+def test_market_cap_filter():
+    data = {"BASECO": base_breakout_stock(), "FORMCO": base_forming_stock()}
+    cfg = ibs.ScanConfig(min_rs=0, min_turnover_cr=0, base_min_rs=0)
+    res = ibs.scan(data, cfg)
+    assert {"BASECO", "FORMCO"} <= set(res.screens["Base Breakout"]["symbol"])
+    ibs.apply_market_cap_filter(res, {})                       # no fundamentals: nothing dropped
+    assert len(res.screens["Base Breakout"]) == 2
+    ibs.apply_market_cap_filter(res, {"BASECO": {"market_cap_cr": 5000}, "FORMCO": {"market_cap_cr": 900}})
+    assert list(res.screens["Base Breakout"]["symbol"]) == ["BASECO"]
+
+
+def ichimoku_stock():
+    # Uptrend, a four-month drift lower that leaves price under the cloud, then
+    # a turn up through the cloud top over the last few sessions
+    return make_series([(0, 100), (250, 200), (30, 172), (90, 160), (8, 165), (4, 182)], noise=0.003, seed=7)
+
+
+def test_ichimoku_breakout():
+    out = ibs.find_ichimoku(ichimoku_stock(), ibs.ScanConfig())
+    assert out["ichimoku"], out
+    assert out["ich_days_ago"] <= 5 and out["ich_pct_above_cloud"] > 0
+    assert out["ich_tk_bullish"] and out["ich_chikou_ok"]
+
+
+def test_ichimoku_not_when_already_above():
+    # a steady uptrend has been above the cloud for months: no fresh breakout
+    df = make_series([(0, 100), (400, 300)], noise=0.002, seed=8)
+    assert not ibs.find_ichimoku(df, ibs.ScanConfig())["ichimoku"]
+
+
+def test_ichimoku_not_in_downtrend():
+    assert not ibs.find_ichimoku(downtrend_stock(), ibs.ScanConfig())["ichimoku"]
+
+
 def test_indicators_in_range():
     df = vcp_stock()
     r, a = ibs.rsi(df["Close"]), ibs.adx(df)
@@ -164,8 +205,8 @@ def test_indicators_in_range():
 def test_full_scan_and_excel(tmp_path=None):
     data = {"VCPCO": vcp_stock(), "SKYCO": bluesky_stock(), "MYBCO": multiyear_stock(),
             "IPOCO": ipo_stock(), "DOWNCO": downtrend_stock(), "MURCO": murphy_stock(),
-            "BASECO": base_breakout_stock()}
-    cfg = ibs.ScanConfig(min_rs=0, min_turnover_cr=0)
+            "BASECO": base_breakout_stock(), "ICHCO": ichimoku_stock()}
+    cfg = ibs.ScanConfig(min_rs=0, min_turnover_cr=0, base_min_rs=0)
     res = ibs.scan(data, cfg)
     s = res.screens
     assert "VCPCO" in set(s["VCP"]["symbol"])
@@ -175,6 +216,8 @@ def test_full_scan_and_excel(tmp_path=None):
     assert "MURCO" in set(s["Murphy"]["symbol"])
     assert "BASECO" in set(s["Base Breakout"]["symbol"])
     assert "DOWNCO" not in set(s["Base Breakout"]["symbol"])
+    assert "ICHCO" in set(s["Ichimoku"]["symbol"])
+    assert "DOWNCO" not in set(s["Ichimoku"]["symbol"])
     assert "DOWNCO" not in set(s["Trend Template"]["symbol"])
     path = os.path.join(str(tmp_path or "."), "test_results.xlsx")
     res.to_excel(path)

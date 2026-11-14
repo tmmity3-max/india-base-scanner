@@ -3,6 +3,9 @@
 ## Unreleased
 
 - New **Base Breakout** screen: numbered bases with a pivot, listing bases forming near the pivot and recent breakouts, with Sky, VCP and Squat tags. On the website, in the notebook and in the Excel export.
+- Base Breakout filters: within 7% of the pivot on either side, RS rating 65 or more, market cap above ₹2,000 crore.
+- New **Ichimoku** screen: closes up through the top of the cloud in the last 5 sessions, with Tenkan above Kijun and the Chikou span clear of price.
+- Website: the screen tabs are smaller and always fit on one row.
 - New TradingView scripts: `pine/base_breakout_pro.pine` (the Base Breakout screen as an indicator, with a volume pane) and `pine/rs_line.pine` (RS line pane).
 
 ## v0.1.0 (7 November 2026)
