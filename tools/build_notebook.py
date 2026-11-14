@@ -36,6 +36,7 @@ Free, open-source **base & breakout screens for NSE stocks**. Today's results ar
 | **Trend Template** | Stage-2 uptrend: price > 50 > 150 > 200 SMA, 200 SMA rising, near 52-week high, strong RS |
 | **VCP** | Volatility Contraction Pattern: each pullback tighter than the last, volume drying up, price near the pivot |
 | **Blue Sky** | Price at or breaking out to an **all-time high** - no overhead supply |
+| **Base Breakout** | Numbered bases (B1, B2, …) with a pivot: 3+ weeks below a high with a 5–35% pullback. Lists bases forming within 5% of the pivot and breakouts from the last 5 sessions |
 | **Multi-Year Base** | Breaking out of a high that held for **2+ years** |
 | **IPO Base** | Recent listings basing just under their post-listing high |
 | **Murphy** | John Murphy's positional trend-following: price above a rising 40-week SMA, then a fresh 10/50 crossover, 4-week-rule breakout, or crossover + 2-week breakout |
@@ -124,7 +125,7 @@ ibs.plot_stock(SYMBOL, data, result, bars=BARS);
 """, form=True),
     code("""
 #@title Chart the top matches of one screen
-SCREEN = "VCP"  #@param ["VCP", "Blue Sky", "Murphy", "Multi-Year Base", "IPO Base", "Trend Template"]
+SCREEN = "VCP"  #@param ["VCP", "Blue Sky", "Murphy", "Base Breakout", "Multi-Year Base", "IPO Base", "Trend Template"]
 TOP_N = 6  #@param {type:"slider", min:1, max:20, step:1}
 for sym in result.screens[SCREEN]["symbol"].head(TOP_N):
     ibs.plot_stock(sym, data, result)
@@ -147,6 +148,7 @@ except ImportError:
 - **RS line new high:** the stock/index ratio is at a 52-week high - often seen before price breakouts.
 - **VCP:** the scanner finds swing highs and lows (moves of at least 4%). Starting from the highest high in the last ~6 months, it measures each pullback. It needs 2+ pullbacks, each no deeper than the one before, a final pullback under 12%, the 10-day volume below 85% of the 50-day average, and price within 6% of the pivot. The pivot is the high of the last contraction.
 - **Blue Sky:** close within 3% of the all-time high, with at least 3 years of history.
+- **Base Breakout:** a base starts at a swing high (the pivot) and counts once price has spent 3+ weeks below it with a 5-35% pullback. A close above the pivot, above the 50 and 200-day SMAs, is the breakout. Bases are numbered B1, B2, ... and the count restarts when a base undercuts the low of the one before. Listed: bases forming within 5% of the pivot and breakouts from the last 5 sessions still above it.
 - **Multi-Year Base:** the highest high before the last 5 bars was set 2+ years ago, the base was no deeper than 60%, and price is now within 5% below or up to 10% above that old high.
 - **IPO Base:** listed 20-500 trading days ago, based 10+ days below the post-listing high with a depth of 35% or less, and now within 8% of that high.
 - **Murphy:** John Murphy's positional trend-following. Weekly filter from completed weeks only (no repainting): price above a rising 40-week SMA (or weekly MACD above signal, or both). Daily entry: 10-day SMA crossing above the 50-day, the 4-week rule (close above the high of the last 4 full weeks), or a crossover confirmed by a 2-week breakout. Lists stocks whose entry signal fired in the last 5 sessions. The same rules as a free TradingView indicator: `pine/murphy_trend_following.pine` in the GitHub repo.

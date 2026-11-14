@@ -1,0 +1,62 @@
+// This Pine Script® code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+//@version=6
+// =============================================================================
+// RS Line (companion pane for Base Breakout Pro)
+//
+// RS line = stock close / benchmark close × 100, in its own pane with its own
+// scale. Rising line = the stock is outperforming the chosen index.
+//   Blue dot  = RS line at a new high for the lookback.
+//   Pink dot  = RS line at a new high while price is NOT yet at a new high
+//               (RS leading price, usually a bullish sign).
+// Dots and alerts are placed only on closed bars.
+// =============================================================================
+indicator("RS Line vs Index", shorttitle="RS Line", overlay=false, format=format.price, precision=2)
+
+rsChoice = input.string("NIFTY 50", "RS Base (Benchmark)", options=["NIFTY 50", "NIFTY 500", "NIFTY SMALLCAP 250", "NIFTY MIDCAP 150", "Custom"])
+rsCustomSym = input.symbol("NSE:NIFTY", "Custom Benchmark Symbol", tooltip="Used only when RS Base is set to Custom.")
+rsMaLen = input.int(50, "RS Line Moving Average", minval=1)
+rsHiLen = input.int(250, "RS New-High Lookback (bars)", minval=20)
+showRsMa = input.bool(true, "Show RS Moving Average")
+showRsDots = input.bool(true, "Mark RS New Highs (blue) / RS Leading Price (pink)")
+showFill = input.bool(true, "Shade RS Above / Below Its Average")
+showTbl = input.bool(true, "Show RS Table")
+
+string benchSym = rsChoice == "NIFTY 50" ? "NSE:NIFTY" : rsChoice == "NIFTY 500" ? "NSE:CNX500" : rsChoice == "NIFTY SMALLCAP 250" ? "NSE:NIFTYSMLCAP250" : rsChoice == "NIFTY MIDCAP 150" ? "NSE:NIFTYMIDCAP150" : rsCustomSym
+float bench = request.security(benchSym, timeframe.period, close, ignore_invalid_symbol=true)
+
+float rsLine = bench > 0 ? close / bench * 100 : na
+float rsMa = ta.sma(rsLine, rsMaLen)
+float rsHi = ta.highest(rsLine, rsHiLen)
+float priceHi = ta.highest(close, rsHiLen)
+bool rsNewHigh = barstate.isconfirmed and not na(rsLine) and rsLine >= rsHi
+bool rsLeads = rsNewHigh and close < priceHi
+bool xUp = ta.crossover(rsLine, rsMa)
+bool xDn = ta.crossunder(rsLine, rsMa)
+
+// IBD-style weighted 12-month performance (latest quarter counts double), stock minus benchmark.
+wPerf(float src) => (2 * (src / src[63] - 1) + (src / src[126] - 1) + (src / src[189] - 1) + (src / src[252] - 1)) / 5 * 100
+float rsScore = wPerf(close) - wPerf(bench)
+
+color upCol = #2962FF
+color dnCol = #F23645
+bool above = rsLine >= rsMa
+pRS = plot(rsLine, "RS Line", color=above ? upCol : dnCol, linewidth=2)
+pMA = plot(showRsMa ? rsMa : na, "RS Line MA", color=color.orange)
+fill(pRS, pMA, color=showFill and showRsMa ? (above ? color.new(upCol, 85) : color.new(dnCol, 85)) : na, title="RS vs MA")
+plotshape(showRsDots and rsNewHigh and not rsLeads ? rsLine : na, "RS New High", shape.circle, location.absolute, color.new(color.blue, 0), size=size.tiny)
+plotshape(showRsDots and rsLeads ? rsLine : na, "RS Leads Price", shape.circle, location.absolute, color.new(color.fuchsia, 0), size=size.tiny)
+
+var table tbl = table.new(position.top_right, 2, 3, border_width=1)
+if showTbl and barstate.islast
+    color bg = color.new(#2B2F36, 4)
+    table.cell(tbl, 0, 0, "RS vs " + rsChoice, text_color=color.white, bgcolor=bg, text_size=size.small, text_halign=text.align_left)
+    table.cell(tbl, 1, 0, na(rsLine) ? "no data" : above ? "Outperforming" : "Underperforming", text_color=na(rsLine) ? color.gray : above ? color.lime : color.red, bgcolor=bg, text_size=size.small)
+    table.cell(tbl, 0, 1, "RS Score (weighted 12M)", text_color=color.white, bgcolor=bg, text_size=size.small, text_halign=text.align_left)
+    table.cell(tbl, 1, 1, na(rsScore) ? "n/a" : str.tostring(rsScore, "+0.0;-0.0") + "%", text_color=na(rsScore) ? color.gray : rsScore > 0 ? color.lime : color.red, bgcolor=bg, text_size=size.small)
+    table.cell(tbl, 0, 2, "RS vs " + str.tostring(rsHiLen) + "-bar high", text_color=color.white, bgcolor=bg, text_size=size.small, text_halign=text.align_left)
+    table.cell(tbl, 1, 2, na(rsLine) or na(rsHi) ? "n/a" : str.tostring((rsLine / rsHi - 1) * 100, "0.0") + "%", text_color=color.white, bgcolor=bg, text_size=size.small)
+
+alertcondition(rsNewHigh, "RS New High", "{{ticker}}: RS line at a new high")
+alertcondition(rsLeads, "RS Leads Price", "{{ticker}}: RS line at a new high before price")
+alertcondition(barstate.isconfirmed and xUp, "RS Crosses Above MA", "{{ticker}}: RS line crossed above its average")
+alertcondition(barstate.isconfirmed and xDn, "RS Crosses Below MA", "{{ticker}}: RS line crossed below its average")
