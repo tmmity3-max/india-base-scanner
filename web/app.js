@@ -182,7 +182,33 @@
   }
 
   // =====================================================================
-  // Chart: candles, SMAs, key levels, volume, RS line, with zoom and pan
+  // Ichimoku lines from the chart's own bars (9 / 26 / 52, displaced 26), as
+  // charting platforms draw them: the cloud is shifted 25 bars forward, so it
+  // runs past the last candle, and the Chikou span is the close shifted 25 back.
+  const ICH = { tenkan: 9, kijun: 26, senkouB: 52, shift: 25 };
+  function computeIchimoku(c) {
+    const n = c.c.length;
+    const mid = (k) => {
+      const out = new Array(n).fill(null);
+      for (let i = k - 1; i < n; i++) {
+        let hi = -Infinity, lo = Infinity;
+        for (let j = i - k + 1; j <= i; j++) { if (c.h[j] > hi) hi = c.h[j]; if (c.l[j] < lo) lo = c.l[j]; }
+        out[i] = (hi + lo) / 2;
+      }
+      return out;
+    };
+    const tenkan = mid(ICH.tenkan), kijun = mid(ICH.kijun), sb = mid(ICH.senkouB);
+    const cloudA = new Array(n + ICH.shift).fill(null), cloudB = new Array(n + ICH.shift).fill(null);
+    const chikou = new Array(n).fill(null);
+    for (let i = 0; i < n; i++) {
+      if (tenkan[i] != null && kijun[i] != null) cloudA[i + ICH.shift] = (tenkan[i] + kijun[i]) / 2;
+      if (sb[i] != null) cloudB[i + ICH.shift] = sb[i];
+      if (i + ICH.shift < n) chikou[i] = c.c[i + ICH.shift];
+    }
+    return { tenkan, kijun, cloudA, cloudB, chikou };
+  }
+
+  // Chart: candles, SMAs or Ichimoku, key levels, volume, RS line, with zoom and pan
   // =====================================================================
   class PriceChart {
     constructor(canvas, opts = {}) {
@@ -197,24 +223,28 @@
       this.yLo = 0; this.yHi = 1;            // price range (in scale units) when auto is off
       this.pointers = new Map();
       this.showSma10 = false;
+      this.ich = null;                       // Ichimoku lines, when the chart is in Ichimoku style
       this.bind();
       new ResizeObserver(() => this.draw()).observe(canvas);
     }
 
     setData(c, o = {}) {
       this.c = c; this.hover = -1; this.showSma10 = !!o.sma10 && !!c.sma10;
+      this.ich = o.ichimoku ? computeIchimoku(c) : null;
       this.auto = true; this.reset(); this.emit();
     }
     clear() { this.c = null; this.draw(); }
     emit() { if (this.onScale) this.onScale({ auto: this.auto, log: this.log }); }
 
     get n() { return this.c ? this.c.c.length : 0; }
+    // empty bars kept to the right of the last candle: room for the forward cloud
+    get lead() { return this.ich ? ICH.shift + 3 : 2; }
     defaultBars() { return Math.min(this.n, this.mini ? 130 : 250); }
     reset() { this.auto = true; this.show(this.defaultBars()); this.emit(); }
     show(bars) {
       if (!this.c) return;
       bars = Math.min(this.n, bars);
-      this.end = this.n + 2; this.start = this.end - bars - 2;
+      this.end = this.n + this.lead; this.start = this.end - bars - this.lead;
       this.auto = true; this.clampX(); this.draw(); this.emit();
     }
     setAuto(v) { this.auto = v; this.draw(); this.emit(); }
@@ -228,16 +258,16 @@
     inv(v) { return this.log ? Math.exp(v) : v; }
 
     clampX() {
-      const n = this.n, span = Math.max(15, Math.min(n + 4, this.end - this.start));
+      const n = this.n, span = Math.max(15, Math.min(n + this.lead + 2, this.end - this.start));
       if (this.start < -2) this.start = -2;
       this.end = this.start + span;
-      if (this.end > n + 8) { this.end = n + 8; this.start = this.end - span; }
+      if (this.end > n + this.lead + 6) { this.end = n + this.lead + 6; this.start = this.end - span; }
       if (this.start < -2) this.start = -2;
     }
     zoom(factor, anchor = 0.85) {
       if (!this.c) return;
       const span = this.end - this.start, a = this.start + span * anchor;
-      const ns = Math.max(15, Math.min(this.n + 4, span * factor));
+      const ns = Math.max(15, Math.min(this.n + this.lead + 2, span * factor));
       this.start = a - ns * anchor; this.end = this.start + ns;
       this.clampX(); this.draw();
     }
@@ -379,6 +409,12 @@
       if (this.auto) {
         let lo = Infinity, hi = -Infinity;
         for (let i = i0; i <= i1; i++) { lo = Math.min(lo, c.l[i]); hi = Math.max(hi, c.h[i]); }
+        if (this.ich) {   // keep the visible cloud, including the part ahead of price, on the scale
+          const jEnd = Math.min(this.ich.cloudA.length - 1, Math.ceil(this.end));
+          for (let j = i0; j <= jEnd; j++) {
+            for (const v of [this.ich.cloudA[j], this.ich.cloudB[j]]) if (v != null) { lo = Math.min(lo, v); hi = Math.max(hi, v); }
+          }
+        }
         for (const lv of c.levels || []) if (lv.price > lo * 0.92 && lv.price < hi * 1.08) { lo = Math.min(lo, lv.price); hi = Math.max(hi, lv.price); }
         const L = this.fwd(lo), Hh = this.fwd(hi), pad = (Hh - L) * 0.07 || Math.abs(Hh) * 0.05;
         this.yLo = L - pad; this.yHi = Hh + pad;
@@ -420,8 +456,37 @@
       // price pane (clipped)
       ctx.save(); ctx.beginPath(); ctx.rect(0, 0, plotW, priceH); ctx.clip();
       const lw = mini ? 1.1 : 1.4;
-      line(c.sma200, css("--sma200"), Y, lw); line(c.sma150, css("--sma150"), Y, lw); line(c.sma50, css("--sma50"), Y, lw);
-      if (this.showSma10) line(c.sma10, css("--sma10"), Y, lw);
+      if (this.ich) {
+        const { tenkan, kijun, cloudA, cloudB, chikou } = this.ich;
+        const j0 = Math.max(1, i0), j1 = Math.min(cloudA.length - 1, Math.ceil(this.end) + 1);
+        // cloud fill: green where Senkou A is above Senkou B, red where it is below
+        ctx.globalAlpha = mini ? 0.16 : 0.14;
+        for (let j = j0; j <= j1; j++) {
+          const a0 = cloudA[j - 1], b0 = cloudB[j - 1], a1 = cloudA[j], b1 = cloudB[j];
+          if (a0 == null || b0 == null || a1 == null || b1 == null) continue;
+          ctx.fillStyle = a0 + a1 >= b0 + b1 ? up : down;
+          ctx.beginPath();
+          ctx.moveTo(X(j - 1), Y(a0)); ctx.lineTo(X(j), Y(a1)); ctx.lineTo(X(j), Y(b1)); ctx.lineTo(X(j - 1), Y(b0));
+          ctx.closePath(); ctx.fill();
+        }
+        ctx.globalAlpha = 0.75;
+        for (const [arr, col] of [[cloudA, up], [cloudB, down]]) {
+          ctx.strokeStyle = col; ctx.lineWidth = 1; ctx.beginPath();
+          let on = false;
+          for (let j = j0 - 1; j <= j1; j++) {
+            const v = arr[j];
+            if (v == null) { on = false; continue; }
+            on ? ctx.lineTo(X(j), Y(v)) : ctx.moveTo(X(j), Y(v)); on = true;
+          }
+          ctx.stroke();
+        }
+        ctx.globalAlpha = 1;
+        line(chikou, css("--chikou"), Y, mini ? 1 : 1.1);
+        line(kijun, css("--kijun"), Y, lw); line(tenkan, css("--tenkan"), Y, lw);
+      } else {
+        line(c.sma200, css("--sma200"), Y, lw); line(c.sma150, css("--sma150"), Y, lw); line(c.sma50, css("--sma50"), Y, lw);
+        if (this.showSma10) line(c.sma10, css("--sma10"), Y, lw);
+      }
       const bars = SETTINGS.chartType === "bars";
       const tick = Math.max(1.5, Math.min(6, step * 0.4));      // open/close tick length for OHLC bars
       for (let i = i0; i <= i1; i++) {
@@ -863,8 +928,11 @@
     $("chartMcap").innerHTML = mc != null ? `<span>Market cap</span><b>${mcapText(mc)}</b>` : "";
     renderFund(c, row);
     const murphy = state.screen === "Murphy";
+    const ich = state.screen === "Ichimoku";
     $("sma10Legend").hidden = !(murphy && c.sma10);
-    mainChart.setData(c, { sma10: murphy });
+    for (const el of document.querySelectorAll(".legend .k-ma")) el.hidden = ich;
+    for (const el of document.querySelectorAll(".legend .k-ich")) el.hidden = !ich;
+    mainChart.setData(c, { sma10: murphy, ichimoku: ich });
   }
   function renderFund(c, row) {
     const f = c.fund || {}, box = $("fund");
@@ -935,7 +1003,7 @@
         card.querySelector('[data-act="in"]').addEventListener("click", () => pc.zoom(1 / 1.3));
         card.querySelector('[data-act="out"]').addEventListener("click", () => pc.zoom(1.3));
         card.querySelector('[data-act="reset"]').addEventListener("click", () => pc.reset());
-        loadChart(sym).then((c) => pc.setData(c, { sma10: state.screen === "Murphy" }))
+        loadChart(sym).then((c) => pc.setData(c, { sma10: state.screen === "Murphy", ichimoku: state.screen === "Ichimoku" }))
           .catch(() => { card.querySelector(".card-note").textContent = "Chart data missing - it will appear after the next scan."; });
       }
     }, { rootMargin: "400px 0px" });
