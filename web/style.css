@@ -10,6 +10,9 @@
   --saffron-wash: #FBF0DD;
   --up: #1E8A5A;
   --down: #C23B33;
+  --tenkan: #2F9BD6;
+  --kijun: #C2410C;
+  --chikou: #8E7CC3;
   --sma10: #14A38B;
   --sma50: #2F6FD6;
   --sma150: #D9822B;
@@ -229,6 +232,13 @@ canvas.mini { width: 100%; height: 340px; display: block; touch-action: pan-y; c
 .legend .k-sma50 { border-color: var(--sma50); }
 .legend .k-sma150 { border-color: var(--sma150); }
 .legend .k-sma200 { border-color: var(--sma200); }
+.legend .k-tenkan { border-color: var(--tenkan); }
+.legend .k-kijun { border-color: var(--kijun); }
+.legend .k-chikou { border-color: var(--chikou); }
+.legend .k-cloud { width: 14px; height: 10px; border: 0; opacity: 0.45; }
+.legend .k-cloud.up { background: var(--up); }
+.legend .k-cloud.down { background: var(--down); }
+.legend [hidden] { display: none; }
 .legend .k-level { border-top-style: dashed; border-color: var(--saffron); }
 .legend .k-rs { border-color: var(--rs); }
 
