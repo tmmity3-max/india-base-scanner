@@ -119,6 +119,42 @@ def test_murphy_not_in_downtrend():
     assert not ibs.find_murphy(downtrend_stock(), ibs.ScanConfig())["murphy"]
 
 
+def base_forming_stock():
+    # Uptrend, then six weeks below the high with a 12% pullback, now 2% under the pivot
+    return make_series([(0, 100), (300, 200), (15, 176), (15, 196)], noise=0.002, seed=5)
+
+
+def base_breakout_stock():
+    # The same base, then a close through the pivot two sessions ago
+    return make_series([(0, 100), (300, 200), (15, 176), (13, 198), (2, 208)], noise=0.002, seed=5)
+
+
+def test_base_forming():
+    out = ibs.find_base(base_forming_stock(), ibs.ScanConfig())
+    assert out["base_bo"] and out["base_state"] == "Forming", out
+    assert 195 < out["base_pivot"] < 205 and -5 <= out["base_pct_from_pivot"] <= 0
+    assert out["base_weeks"] >= 3 and 5 <= out["base_depth"] <= 35
+    assert "Sky" in out["base_tags"]
+
+
+def test_base_breakout():
+    out = ibs.find_base(base_breakout_stock(), ibs.ScanConfig())
+    assert out["base_bo"] and out["base_state"] == "Breakout", out
+    assert out["base_no"] >= 1 and out["base_days_ago"] <= 5
+    assert out["base_pct_from_pivot"] >= 0
+
+
+def test_base_no_lookahead():
+    # ten sessions earlier the breakout has not happened yet: still a forming base
+    df = base_breakout_stock()
+    cut = df.iloc[:-10]
+    assert ibs.find_base(cut, ibs.ScanConfig())["base_state"] == "Forming"
+
+
+def test_base_not_in_downtrend():
+    assert not ibs.find_base(downtrend_stock(), ibs.ScanConfig())["base_bo"]
+
+
 def test_indicators_in_range():
     df = vcp_stock()
     r, a = ibs.rsi(df["Close"]), ibs.adx(df)
@@ -127,7 +163,8 @@ def test_indicators_in_range():
 
 def test_full_scan_and_excel(tmp_path=None):
     data = {"VCPCO": vcp_stock(), "SKYCO": bluesky_stock(), "MYBCO": multiyear_stock(),
-            "IPOCO": ipo_stock(), "DOWNCO": downtrend_stock(), "MURCO": murphy_stock()}
+            "IPOCO": ipo_stock(), "DOWNCO": downtrend_stock(), "MURCO": murphy_stock(),
+            "BASECO": base_breakout_stock()}
     cfg = ibs.ScanConfig(min_rs=0, min_turnover_cr=0)
     res = ibs.scan(data, cfg)
     s = res.screens
@@ -136,6 +173,8 @@ def test_full_scan_and_excel(tmp_path=None):
     assert "MYBCO" in set(s["Multi-Year Base"]["symbol"])
     assert "IPOCO" in set(s["IPO Base"]["symbol"])
     assert "MURCO" in set(s["Murphy"]["symbol"])
+    assert "BASECO" in set(s["Base Breakout"]["symbol"])
+    assert "DOWNCO" not in set(s["Base Breakout"]["symbol"])
     assert "DOWNCO" not in set(s["Trend Template"]["symbol"])
     path = os.path.join(str(tmp_path or "."), "test_results.xlsx")
     res.to_excel(path)

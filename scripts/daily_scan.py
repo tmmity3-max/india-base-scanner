@@ -82,7 +82,8 @@ def chart_payload(sym: str, df: pd.DataFrame, result: ibs.ScanResult, fund: dict
                              ("myb_pivot", "multiyear_base", "Multi-year high"),
                              ("ipo_high", "ipo_base", "IPO high"),
                              ("ath", "bluesky", "All-time high"),
-                             ("murphy_entry", "murphy", "Murphy entry")):
+                             ("murphy_entry", "murphy", "Murphy entry"),
+                             ("base_pivot", "base_bo", "Base pivot")):
         val = row.get(key)
         if bool(row.get(flag, False)) and val == val and val is not None:
             levels.append({"label": label, "price": _clean(val)})

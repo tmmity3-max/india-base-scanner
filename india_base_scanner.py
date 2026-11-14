@@ -365,6 +365,16 @@ class ScanConfig:
     murphy_min_adx: float = 20.0
     murphy_signal_days: int = 5           # list BUY signals from the last N sessions
 
+    # --- Base Breakout (numbered bases with a pivot) ---
+    base_min_weeks: float = 3.0           # weeks spent below the starting high
+    base_min_depth: float = 5.0           # % pullback needed to call it a base
+    base_max_depth: float = 35.0          # deeper than this cancels the base
+    base_trend_filter: bool = True        # breakout must close above the 50 and 200 SMA
+    base_max_below_pivot: float = 5.0     # % below pivot still listed as "forming"
+    base_signal_days: int = 5             # list breakouts from the last N sessions
+    base_squat_pct: float = 40.0          # breakout closing in the lower N% of its bar = squat
+    base_history_bars: int = 1260         # bars of history the base count is built from (~5 years)
+
     # --- Shared ---
     breakout_window: int = 5              # bars in which a breakout counts as "recent"
     surge_volume: float = 1.5             # today's vol / 50-day avg = "volume surge"
@@ -481,6 +491,99 @@ def find_vcp(df: pd.DataFrame, cfg: ScanConfig) -> dict:
         and depths[-1] <= cfg.vcp_max_last_depth
         and -cfg.vcp_max_below_pivot <= dist <= cfg.vcp_max_above_pivot
     )
+    return out
+
+
+def find_base(df: pd.DataFrame, cfg: ScanConfig) -> dict:
+    """Numbered bases with a pivot, the same rules as ``pine/base_breakout_pro.pine``.
+
+    Walk the bars once, closed bars only. A structure starts at a swing high
+    (the pivot). It becomes a *base* once price has spent ``base_min_weeks``
+    below that high with a pullback between ``base_min_depth`` and
+    ``base_max_depth``. A close above the pivot is the breakout; the base
+    count goes up by one, or restarts at 1 when the base undercut the low of
+    the previous base. A stock is listed while a base is forming close to its
+    pivot, or for ``base_signal_days`` after a breakout that is still holding.
+    """
+    out = {"base_bo": False, "base_state": "", "base_no": 0, "base_pivot": np.nan,
+           "base_pct_from_pivot": np.nan, "base_weeks": np.nan, "base_depth": np.nan,
+           "base_tags": "", "base_days_ago": np.nan}
+    n = len(df)
+    if n < 60:
+        return out
+    c_s, v_s = df["Close"], df["Volume"]
+    h = df["High"].to_numpy(float)
+    l = df["Low"].to_numpy(float)
+    c = c_s.to_numpy(float)
+    sma50 = c_s.rolling(50).mean().to_numpy(float)
+    sma200 = c_s.rolling(200).mean().to_numpy(float)
+    vol10 = v_s.rolling(10).mean().to_numpy(float)
+    vol50 = v_s.rolling(50).mean().to_numpy(float)
+    # all-time high before each bar, for the "Sky" tag
+    prior_ath = np.r_[np.nan, np.maximum.accumulate(h)[:-1]]
+    days = (df.index - df.index[0]).days.to_numpy(float)
+
+    start = max(0, n - cfg.base_history_bars)
+    peak = low = np.nan
+    peak_i = -1
+    peak_sky = active = False
+    base_n = 0
+    prev_low = np.nan
+    last = None                                  # the most recent breakout
+
+    for i in range(start, n):
+        restart = False
+        if peak_i < 0:
+            restart = True
+        else:
+            low = min(low, l[i])
+            depth = (peak - low) / peak * 100
+            weeks = (days[i] - days[peak_i]) / 7
+            if depth > cfg.base_max_depth:
+                restart = True                   # too deep: not a base any more
+            elif not active:
+                if h[i] > peak:
+                    restart = True               # still trending: the high moves up
+                elif weeks >= cfg.base_min_weeks and depth >= cfg.base_min_depth:
+                    active = True
+            elif c[i] > peak:
+                ok = (not cfg.base_trend_filter
+                      or ((np.isnan(sma50[i]) or c[i] > sma50[i])
+                          and (np.isnan(sma200[i]) or c[i] > sma200[i])))
+                if ok:
+                    undercut = prev_low == prev_low and low < prev_low
+                    base_n = 1 if undercut else base_n + 1
+                    prev_low = low
+                    k = max(5, min(100, (i - peak_i) // 3))
+                    tight = h[i - k + 1:i + 1].max() - l[i - k + 1:i + 1].min()
+                    vcp = bool(tight <= 0.5 * (peak - low) and vol10[i] < vol50[i])
+                    rng = h[i] - l[i]
+                    squat = bool(rng > 0 and (c[i] - l[i]) / rng * 100 < cfg.base_squat_pct)
+                    tags = [t for t, on in (("VCP", vcp), ("Sky", peak_sky), ("Squat", squat)) if on]
+                    last = {"i": i, "pivot": peak, "no": base_n, "weeks": weeks,
+                            "depth": depth, "tags": ", ".join(tags)}
+                restart = True
+        if restart:
+            peak, peak_i, low = h[i], i, l[i]
+            peak_sky = bool(np.isnan(prior_ath[i]) or h[i] >= prior_ath[i])
+            active = False
+
+    close = c[-1]
+    if last is not None and (n - 1 - last["i"]) <= cfg.base_signal_days and close >= last["pivot"]:
+        out.update(base_bo=True, base_state="Breakout", base_no=last["no"],
+                   base_pivot=round(last["pivot"], 2),
+                   base_pct_from_pivot=round((close / last["pivot"] - 1) * 100, 2),
+                   base_weeks=round(last["weeks"], 1), base_depth=round(last["depth"], 1),
+                   base_tags=last["tags"], base_days_ago=int(n - 1 - last["i"]))
+    elif active:
+        undercut = prev_low == prev_low and low < prev_low
+        dist = (close / peak - 1) * 100
+        out.update(base_state="Forming", base_no=1 if undercut else base_n + 1,
+                   base_pivot=round(peak, 2), base_pct_from_pivot=round(dist, 2),
+                   base_weeks=round((days[-1] - days[peak_i]) / 7, 1),
+                   base_depth=round((peak - low) / peak * 100, 1),
+                   base_tags="Sky" if peak_sky else "")
+        out["base_bo"] = bool(dist >= -cfg.base_max_below_pivot)
     return out
 
 
@@ -745,6 +848,9 @@ def analyze_stock(df: pd.DataFrame, cfg: ScanConfig,
 
     # --- Murphy ---
     m.update(find_murphy(df, cfg, bench))
+
+    # --- Base Breakout ---
+    m.update(find_base(df, cfg))
     return m
 
 
@@ -768,6 +874,10 @@ SCREEN_COLUMNS = {
                "murphy_signal_date", "murphy_days_ago", "murphy_entry",
                "murphy_pct_from_entry", "murphy_sma40w",
                "murphy_weekly_macd_ok", "adx14", "murphy_rs_score", "turnover_cr", "pct_from_52w_high", "pct_above_52w_low"],
+    "Base Breakout": ["symbol", "industry", "close", "rs_rating", "base_state", "base_no",
+                      "base_pivot", "base_pct_from_pivot", "base_weeks", "base_depth",
+                      "base_tags", "base_days_ago", "vol_ratio", "rs_line_new_high",
+                      "turnover_cr", "pct_from_52w_high", "pct_above_52w_low"],
     "IPO Base": ["symbol", "industry", "close", "listed_days", "ipo_high",
                  "ipo_pct_from_high", "ipo_base_days", "ipo_depth", "vol_ratio",
                  "turnover_cr", "pct_from_52w_high", "pct_above_52w_low"],
@@ -817,10 +927,11 @@ def apply_screens(metrics: pd.DataFrame, cfg: ScanConfig) -> Dict[str, pd.DataFr
         "Multi-Year Base": liquid & m["multiyear_base"],
         "IPO Base": liquid & m["ipo_base"],
         "Murphy": liquid & m["murphy"],
+        "Base Breakout": liquid & m["base_bo"],
     }
     sort_by = {"Trend Template": "rs_rating", "VCP": "rs_rating", "Blue Sky": "rs_rating",
                "Multi-Year Base": "myb_base_years", "IPO Base": "ipo_base_days",
-               "Murphy": "murphy_days_ago"}
+               "Murphy": "murphy_days_ago", "Base Breakout": "base_pct_from_pivot"}
     ascending = {"Murphy": True}  # newest signals first
     out = {}
     for name, mask in masks.items():

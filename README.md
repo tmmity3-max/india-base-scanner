@@ -4,7 +4,7 @@
 See today's setups on the website, or run your own scan in Google Colab. No installation, no account, no paid data.
 
 ### 🌐 Live site: **[india-base-scanner-web.vercel.app](https://india-base-scanner-web.vercel.app)**
-Updated automatically after every market close: VCP, Blue Sky, Murphy trend-following, Multi-Year Base, IPO Base and Trend Template screens, zoomable charts with an RS line, fundamentals, and a NIFTY 50 / Next 50 / Midcap 150 / Smallcap 250 heatmap.
+Updated automatically after every market close: VCP, Blue Sky, Murphy trend-following, Base Breakout, Multi-Year Base, IPO Base and Trend Template screens, zoomable charts with an RS line, fundamentals, and a NIFTY 50 / Next 50 / Midcap 150 / Smallcap 250 heatmap.
 
 [![Website](https://img.shields.io/badge/website-live-E39B2D)](https://india-base-scanner-web.vercel.app)
 [![Daily scan](https://github.com/tmmity3-max/india-base-scanner/actions/workflows/daily-scan.yml/badge.svg)](https://github.com/tmmity3-max/india-base-scanner/actions/workflows/daily-scan.yml)
@@ -21,6 +21,7 @@ Updated automatically after every market close: VCP, Blue Sky, Murphy trend-foll
 | **Trend Template** | Stage-2 uptrend: price above the 50, 150 and 200-day SMAs in that order, 200 SMA rising, within 25% of the 52-week high, RS rating ≥ 70 |
 | **VCP** | Volatility Contraction Pattern: 2+ pullbacks, each tighter than the last, volume drying up, price within 6% of the pivot |
 | **Blue Sky** | At or breaking out to an **all-time high**, so there is no overhead supply |
+| **Base Breakout** | Numbered bases (B1, B2, …) with a pivot: 3+ weeks below a high with a 5–35% pullback. Lists bases forming within 5% of the pivot and breakouts from the last 5 sessions |
 | **Multi-Year Base** | Breaking out of a high that held for **2+ years** |
 | **IPO Base** | Recent listings basing just under their post-listing high |
 | **Murphy** | John Murphy's positional trend-following: above a rising 40-week SMA, then a fresh 10/50 crossover, 4-week-rule breakout, or crossover + 2-week breakout |
@@ -50,6 +51,11 @@ To host your own copy, import this repo on [Vercel](https://vercel.com/new), set
 ## Free TradingView indicator
 
 [`pine/murphy_trend_following.pine`](pine/murphy_trend_following.pine) is the Murphy screen as a TradingView indicator for daily charts. It has the weekly 40-week SMA filter (completed weeks, no repainting), ENTRY labels for the 10/50 crossover, the 4-week rule or a crossover with a 2-week breakout, an optional ADX filter, a weekly MACD warning, and an RS line against NIFTY 50, NIFTY 500 or any index.
+
+Two more scripts sit next to it:
+
+- [`pine/base_breakout_pro.pine`](pine/base_breakout_pro.pine): the Base Breakout screen as an indicator. Base boxes numbered B1, B2, …, a pivot line, breakout / squat / failed-poke markers on closed bars only, a volume pane with relative volume and HVY / HVQ tags, an Ichimoku cloud, and ATR and fundamentals tables.
+- [`pine/rs_line.pine`](pine/rs_line.pine): the RS line in its own pane against NIFTY 50, NIFTY 500, Smallcap 250, Midcap 150 or any symbol.
 
 **To add it to TradingView:**
 1. Open [the file](pine/murphy_trend_following.pine), click **Raw**, and copy everything. You can also use the *Copy code* button on the website's Murphy screen.
@@ -109,6 +115,20 @@ Install the dependencies with `pip install -r requirements.txt`.
 <summary><b>Blue Sky</b></summary>
 
 Close within `bluesky_max_below_ath` (3%) of the all-time high, at least 3 years of history, and RS ≥ `min_rs`. The `new_ath_recent` column shows a new all-time high within the last 5 bars.
+</details>
+
+<details>
+<summary><b>Base Breakout</b></summary>
+
+1. Walk the bars once, closed bars only. A structure starts at a swing high, the **pivot**. While price keeps making higher highs the pivot moves up with it.
+2. It becomes a base once price has spent `base_min_weeks` (3) below the pivot with a pullback between `base_min_depth` (5%) and `base_max_depth` (35%). A deeper pullback cancels it.
+3. A close above the pivot is the breakout. With `base_trend_filter` on, the close must also be above the 50 and 200-day SMAs.
+4. Bases are numbered B1, B2 and so on. The count restarts at 1 when a base undercuts the low of the base before it.
+5. Listed: bases forming within `base_max_below_pivot` (5%) of the pivot, and breakouts from the last `base_signal_days` (5) sessions that are still above the pivot.
+6. Tags: **Sky** (the pivot is an all-time high), **VCP** (the last third of the base is tight and 10-day volume is below the 50-day average; a looser test than the VCP screen), **Squat** (the breakout bar closed in the lower 40% of its range).
+
+The same rules are in [`pine/base_breakout_pro.pine`](pine/base_breakout_pro.pine) for TradingView.
+
 </details>
 
 <details>

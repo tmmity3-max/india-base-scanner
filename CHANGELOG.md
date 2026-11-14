@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- New **Base Breakout** screen: numbered bases with a pivot, listing bases forming near the pivot and recent breakouts, with Sky, VCP and Squat tags. On the website, in the notebook and in the Excel export.
+- New TradingView scripts: `pine/base_breakout_pro.pine` (the Base Breakout screen as an indicator, with a volume pane) and `pine/rs_line.pine` (RS line pane).
+
 ## v0.1.0 (7 November 2026)
 
 First public release.

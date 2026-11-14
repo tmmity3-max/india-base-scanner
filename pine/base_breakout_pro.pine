@@ -1,0 +1,559 @@
+// This Pine Script® code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+//@version=6
+// =============================================================================
+// Base Breakout Pro (Non-Repainting)
+//
+// Growth-stock style base detection (O'Neil / Minervini):
+//   - A base starts at a swing high (the PIVOT) and is valid once price has spent
+//     a minimum number of weeks below it with a pullback inside the depth limits.
+//   - Breakout = a bar CLOSE above the pivot. Bases are numbered B1, B2, ...
+//     and the count resets when a base undercuts the low of the previous base.
+//   - Tags: "Sky" = pivot is an all-time high on the loaded history,
+//           "VCP" = the last third of the base is tight and volume has dried up.
+//   - Squat = breakout bar that closes in the lower part of its own range.
+//   - Failed poke = high went through the pivot but the bar closed back below it.
+//
+// Non-repainting: the whole engine only advances on confirmed (closed) bars, so
+// no box, marker or alert can appear intrabar and vanish. A base box is drawn
+// back to its starting high once the base qualifies; that is drawing history,
+// not a signal. Signals are only ever placed on the bar that just closed.
+// =============================================================================
+// Layout: this script lives in its own VOLUME pane (volume bars, volume MA,
+// HVY / HVQ tags, relative-volume label). Everything about price (bases, pivot,
+// markers, moving averages, cloud, dashboards) is drawn on the main chart
+// with force_overlay. The RS line is drawn inside the volume pane, scaled to the
+// bars visible on screen.
+indicator("Base Breakout Pro + Volume (Non-Repainting)", shorttitle="Base BO", overlay=false, format=format.volume, max_boxes_count=200, max_lines_count=50, max_labels_count=500, max_polylines_count=10)
+
+// ─── INPUTS ──────────────────────────────────────────────────────────────────
+gB = "Base Detection"
+minWeeks = input.float(3.0, "Min Base Length (weeks)", minval=0.5, step=0.5, group=gB, tooltip="Time price must spend below the starting high before the structure counts as a base.")
+minDepth = input.float(5.0, "Min Base Depth %", minval=0.5, step=0.5, group=gB, tooltip="Minimum pullback from the starting high. Shallower pauses are treated as part of the trend.")
+maxDepth = input.float(35.0, "Max Base Depth %", minval=5.0, step=1.0, group=gB, tooltip="A pullback deeper than this cancels the base and detection restarts from the current bar.")
+boBuf = input.float(0.0, "Breakout Buffer %", minval=0.0, step=0.1, group=gB, tooltip="The bar must close this far above the pivot to count as a breakout.")
+useTrend = input.bool(true, "Trend Filter (close above MA50 and MA200)", group=gB, tooltip="Breakouts below the moving averages are ignored, which removes dead-cat bounces in downtrends.")
+squatPct = input.float(40.0, "Squat: close in lower % of bar", minval=5.0, maxval=60.0, step=5.0, group=gB)
+confirmBars = input.int(10, "Follow-Through Window (bars)", minval=1, maxval=50, group=gB, tooltip="After a breakout, a close back below the pivot inside this window counts as a failed breakout; otherwise it counts as held.")
+
+gVol = "Volume"
+volMaLen = input.int(30, "Volume MA Length (EMA)", minval=1, group=gVol)
+showVolMa = input.bool(true, "Show Volume MA", group=gVol)
+volTf = input.timeframe("D", "Relative Volume Reference Timeframe", group=gVol, tooltip="Relative volume = this bar's volume divided by the average volume of the previous closed bars on this timeframe.")
+avgLen1 = input.int(30, "Average Length 1", minval=1, group=gVol)
+avgLen2 = input.int(100, "Average Length 2", minval=1, group=gVol)
+minRelVol = input.float(0.0, "Min Breakout Relative Volume (0 = off)", minval=0.0, step=0.1, group=gVol, tooltip="When above 0, a breakout with relative volume (Average Length 1) below this is still counted but marked grey as 'low vol'. 1.5 is a common setting.")
+showRelLbl = input.bool(true, "Show Relative Volume Label (last bar)", group=gVol)
+showInCr = input.bool(true, "Avg Turnover in Crores (Millions otherwise)", group=gVol)
+showSector = input.bool(true, "Show Sector and Industry", group=gVol)
+
+gV = "Visual"
+showBases = input.bool(true, "Show Base Boxes", group=gV)
+showPivot = input.bool(true, "Show Pivot Line (current base)", group=gV)
+showMA = input.bool(true, "Show EMA21 / MA50 / MA200", group=gV)
+showVol = input.bool(true, "Show HVY / HVQ Volume Tags", group=gVol, tooltip="HVY = highest volume in a year (252 bars). HVQ = highest volume in a quarter (63 bars).")
+showPoke = input.bool(true, "Show Failed Pokes", group=gV)
+showOut = input.bool(false, "Show Failed-Breakout Markers", group=gV)
+showDash = input.bool(true, "Show Dashboard", group=gV)
+dashPos = input.string("Top Right", "Dashboard Position", options=["Top Left", "Top Right", "Bottom Left", "Bottom Right"], group=gV)
+showFund = input.bool(true, "Show Fundamentals Table", group=gV, tooltip="EPS, revenue and net profit with quarter-on-quarter and year-on-year change, plus the moving-average values.")
+fundPos = input.string("Bottom Right", "Fundamentals Position", options=["Top Left", "Top Right", "Bottom Left", "Bottom Right"], group=gV)
+
+gI = "Ichimoku"
+showCloud = input.bool(true, "Show Ichimoku Cloud", group=gI)
+showTK = input.bool(false, "Show Tenkan / Kijun Lines", group=gI)
+tenkanLen = input.int(9, "Tenkan-sen", minval=1, group=gI)
+kijunLen = input.int(26, "Kijun-sen", minval=1, group=gI)
+senkouLen = input.int(52, "Senkou Span B", minval=1, group=gI)
+displacement = input.int(26, "Displacement", minval=1, group=gI)
+
+gA = "ATR Table"
+showAtrTbl = input.bool(true, "Show ATR Table", group=gA)
+atrTblLen = input.int(14, "ATR Length", minval=1, group=gA)
+atrTblPos = input.string("Bottom Left", "ATR Table Position", options=["Top Left", "Top Right", "Bottom Left", "Bottom Right"], group=gA)
+
+gR = "Relative Strength"
+rsChoice = input.string("NIFTY 50", "RS Base (Benchmark)", options=["NIFTY 50", "NIFTY 500", "NIFTY SMALLCAP 250", "NIFTY MIDCAP 150", "Custom"], group=gR, tooltip="Index the stock is compared against for the RS line and the RS score.")
+rsCustomSym = input.symbol("NSE:NIFTY", "Custom Benchmark Symbol", group=gR, tooltip="Used only when RS Base is set to Custom.")
+showRsLine = input.bool(false, "Show RS Line (in the volume pane)", group=gR, tooltip="Drawn over the volume bars for the bars visible on screen, scaled to fit. The shape is the true RS line; it has no price scale of its own. Rising = outperforming the chosen index.")
+rsMaLen = input.int(50, "RS Line Moving Average", minval=1, group=gR)
+rsHiLen = input.int(250, "RS New-High Lookback (bars)", minval=20, group=gR)
+showRsMa = input.bool(true, "Show RS Moving Average", group=gR)
+showRsDots = input.bool(true, "Mark RS New Highs (blue) / RS Leading Price (pink)", group=gR)
+rsBandLow = input.int(40, "RS Line Band: bottom (% of pane height)", minval=0, maxval=80, group=gR, tooltip="The RS line is drawn between this level and the top of the volume pane. Raise it to keep the line clear of the volume bars.")
+string benchSym = rsChoice == "NIFTY 50" ? "NSE:NIFTY" : rsChoice == "NIFTY 500" ? "NSE:CNX500" : rsChoice == "NIFTY SMALLCAP 250" ? "NSE:NIFTYSMLCAP250" : rsChoice == "NIFTY MIDCAP 150" ? "NSE:NIFTYMIDCAP150" : rsCustomSym
+
+gC = "Colors"
+baseFill = input.color(color.new(#9AA4B2, 88), "Base Fill", group=gC)
+baseTxt = input.color(#B8C0CC, "Base Label", group=gC)
+pivotCol = input.color(#1F9D55, "Pivot / Breakout", group=gC)
+squatCol = input.color(#FFD23F, "Squat", group=gC)
+pokeCol = input.color(#FF9800, "Failed Poke / Fail", group=gC)
+
+// ─── SERIES ──────────────────────────────────────────────────────────────────
+float ema21 = ta.ema(close, 21)
+float ma50 = ta.sma(close, 50)
+float ma200 = ta.sma(close, 200)
+float volMa = ta.ema(volume, volMaLen)
+float volAvg10 = ta.sma(volume, 10)
+// Averages of the previous CLOSED reference-timeframe bars (no repaint).
+float avg1 = request.security(syminfo.tickerid, volTf, ta.sma(volume, avgLen1)[1], barmerge.gaps_off, barmerge.lookahead_on)
+float avg2 = request.security(syminfo.tickerid, volTf, ta.sma(volume, avgLen2)[1], barmerge.gaps_off, barmerge.lookahead_on)
+float relVol1 = volume / avg1
+float relVol2 = volume / avg2
+float avgTurnover = volMa * close / (showInCr ? 1e7 : 1e6)
+float atrVal = ta.atr(atrTblLen)
+float todayAtrPct = ta.tr(true) / close * 100
+float trp = ta.ema(todayAtrPct, 50)
+
+float bench = request.security(benchSym, timeframe.period, close, ignore_invalid_symbol=true)
+float rsLine = bench > 0 ? close / bench * 100 : na
+float rsMa = ta.sma(rsLine, rsMaLen)
+float rsHi = ta.highest(rsLine, rsHiLen)
+float priceHi = ta.highest(close, rsHiLen)
+bool rsNewHigh = barstate.isconfirmed and not na(rsLine) and rsLine >= rsHi
+bool rsLeads = rsNewHigh and close < priceHi
+// IBD-style weighted 12-month performance (latest quarter counts double), stock minus benchmark.
+wPerf(float src) => (2 * (src / src[63] - 1) + (src / src[126] - 1) + (src / src[189] - 1) + (src / src[252] - 1)) / 5 * 100
+float rsPerf = wPerf(close) - wPerf(bench)
+
+// Ichimoku
+donchian(int len) => math.avg(ta.highest(high, len), ta.lowest(low, len))
+float tenkan = donchian(tenkanLen)
+float kijun = donchian(kijunLen)
+float senkouA = math.avg(tenkan, kijun)
+float senkouB = donchian(senkouLen)
+// The cloud sitting under the CURRENT bar was calculated `displacement - 1` bars ago.
+float cloudNowA = senkouA[displacement - 1]
+float cloudNowB = senkouB[displacement - 1]
+float cloudTop = math.max(cloudNowA, cloudNowB)
+float cloudBot = math.min(cloudNowA, cloudNowB)
+
+var float ath = high
+float athPrev = nz(ath[1], high)
+ath := math.max(ath, high)
+
+// ─── STATE ───────────────────────────────────────────────────────────────────
+var float peak = na      // starting high of the structure = pivot
+var int peakT = na
+var int peakBar = na
+var float bLow = na      // lowest low since the peak
+var bool peakSky = false
+var bool active = false  // structure has qualified as a base
+var int baseN = 0
+var float prevBaseLow = na
+var float curDepth = na
+var float curWeeks = na
+
+var bool pending = false
+var int pBars = 0
+var float pPivot = na
+var int heldN = 0
+var int failN = 0
+
+var box bx = na
+var label bl = na
+var line pl = na
+var label plb = na
+
+// Tightness of the last third of the structure (for the VCP tag).
+int barsIn = na(peakBar) ? 5 : bar_index - peakBar
+int kLen = math.max(5, math.min(100, int(math.floor(barsIn / 3.0))))
+float tightRange = ta.highest(high, kLen) - ta.lowest(low, kLen)
+
+bool sigBase = false
+bool sigBO = false
+bool sigSquat = false
+bool sigLowVol = false
+bool sigPoke = false
+bool sigHeld = false
+bool sigFail = false
+
+// ─── ENGINE (confirmed bars only) ────────────────────────────────────────────
+if barstate.isconfirmed
+    // Follow-through of the previous breakout.
+    if pending
+        pBars += 1
+        if close < pPivot
+            pending := false
+            failN += 1
+            sigFail := true
+        else if pBars >= confirmBars
+            pending := false
+            heldN += 1
+            sigHeld := true
+
+    bool restart = false
+    bool dropBox = false
+    bool finish = false
+    string finalTxt = ""
+
+    if na(peak)
+        restart := true
+    else
+        bLow := math.min(bLow, low)
+        curDepth := (peak - bLow) / peak * 100
+        curWeeks := (time - peakT) / 604800000.0
+        bool undercut = not na(prevBaseLow) and bLow < prevBaseLow
+        int nextN = undercut ? 1 : baseN + 1
+
+        if curDepth > maxDepth
+            // Too deep: not a base any more.
+            restart := true
+            dropBox := true
+        else if not active
+            if high > peak
+                // Still trending: the starting high moves up.
+                restart := true
+            else if curWeeks >= minWeeks and curDepth >= minDepth
+                active := true
+                sigBase := true
+        else
+            if close > peak * (1 + boBuf / 100)
+                bool trendOK = not useTrend or ((na(ma50) or close > ma50) and (na(ma200) or close > ma200))
+                if trendOK
+                    sigBO := true
+                    sigSquat := high > low and (close - low) / (high - low) * 100 < squatPct
+                    sigLowVol := minRelVol > 0 and not na(relVol1) and relVol1 < minRelVol
+                    bool isVCP = tightRange <= 0.5 * (peak - bLow) and volAvg10 < volMa
+                    string tag = isVCP and peakSky ? "VCP+Sky · " : isVCP ? "VCP · " : peakSky ? "Sky · " : ""
+                    baseN := nextN
+                    prevBaseLow := bLow
+                    finalTxt := tag + "B" + str.tostring(baseN) + " · " + str.tostring(math.round(curWeeks)) + "w"
+                    finish := true
+                    if pending
+                        heldN += 1
+                    pending := true
+                    pBars := 0
+                    pPivot := peak
+                else
+                    dropBox := true
+                restart := true
+            else if high > peak
+                sigPoke := true
+
+        // ── Drawing ──
+        if active and not restart and showBases
+            string txt = "B" + str.tostring(nextN) + " · " + str.tostring(math.round(curWeeks)) + "w"
+            if na(bx)
+                bx := box.new(peakT, peak, time, bLow, xloc=xloc.bar_time, bgcolor=baseFill, border_color=color.new(baseFill, 100), border_width=1, force_overlay=true)
+                bl := label.new(peakT, peak, txt, xloc=xloc.bar_time, style=label.style_label_lower_left, color=color.new(#000000, 100), textcolor=baseTxt, size=size.small, force_overlay=true)
+            else
+                box.set_right(bx, time)
+                box.set_bottom(bx, bLow)
+                label.set_text(bl, txt)
+        if active and not restart and showPivot
+            string ptxt = "pivot " + str.tostring(peak, format.mintick)
+            if na(pl)
+                pl := line.new(peakT, peak, time, peak, xloc=xloc.bar_time, extend=extend.right, color=pivotCol, style=line.style_dashed, width=1, force_overlay=true)
+                plb := label.new(time, peak, ptxt, xloc=xloc.bar_time, style=label.style_label_left, color=pivotCol, textcolor=color.white, size=size.small, force_overlay=true)
+            else
+                label.set_x(plb, time)
+
+        if finish
+            if not na(bx)
+                box.set_right(bx, time)
+                box.set_bottom(bx, bLow)
+                label.set_text(bl, finalTxt)
+            bx := na
+            bl := na
+        if dropBox
+            if not na(bx)
+                box.delete(bx)
+                label.delete(bl)
+            bx := na
+            bl := na
+        if restart and not na(pl)
+            line.delete(pl)
+            label.delete(plb)
+            pl := na
+            plb := na
+
+    if restart
+        peak := high
+        peakT := time
+        peakBar := bar_index
+        bLow := low
+        peakSky := high >= athPrev
+        active := false
+        curDepth := 0.0
+        curWeeks := 0.0
+
+// ─── PLOTS ───────────────────────────────────────────────────────────────────
+// Main chart (price)
+plot(showMA ? ema21 : na, "EMA21", color=color.new(#F23645, 20), linestyle=plot.linestyle_dashed, format=format.price, force_overlay=true)
+plot(showMA ? ma50 : na, "MA50", color=color.new(#9C6ADE, 20), linestyle=plot.linestyle_dashed, format=format.price, force_overlay=true)
+plot(showMA ? ma200 : na, "MA200", color=color.new(#FF9800, 20), linestyle=plot.linestyle_dashed, format=format.price, force_overlay=true)
+
+// Ichimoku cloud (drawn `displacement - 1` bars ahead, as in the standard indicator)
+color cloudGreen = #26A65B
+color cloudRed = #D64541
+plot(showTK ? tenkan : na, "Tenkan-sen", color=#8E44AD, format=format.price, force_overlay=true)
+plot(showTK ? kijun : na, "Kijun-sen", color=#F39C12, format=format.price, force_overlay=true)
+pSA = plot(showCloud ? senkouA : na, "Senkou A", color=color.new(cloudGreen, 60), offset=displacement - 1, format=format.price, force_overlay=true)
+pSB = plot(showCloud ? senkouB : na, "Senkou B", color=color.new(cloudRed, 60), offset=displacement - 1, format=format.price, force_overlay=true)
+fill(pSA, pSB, color=senkouA > senkouB ? color.new(cloudGreen, 88) : color.new(cloudRed, 88), title="Kumo")
+
+color lowVolCol = color.new(#8A919E, 0)
+plotshape(sigBO and not sigSquat and not sigLowVol, "Breakout", shape.triangleup, location.abovebar, pivotCol, size=size.tiny, force_overlay=true)
+plotshape(sigBO and not sigSquat and sigLowVol, "Low-Volume Breakout", shape.triangleup, location.abovebar, lowVolCol, size=size.tiny, text="low vol", textcolor=lowVolCol, force_overlay=true)
+plotshape(sigBO and sigSquat, "Squat Breakout", shape.circle, location.abovebar, squatCol, size=size.tiny, text="squat", textcolor=squatCol, force_overlay=true)
+plotshape(showPoke and sigPoke, "Failed Poke", shape.circle, location.abovebar, pokeCol, size=size.tiny, force_overlay=true)
+plotshape(showOut and sigFail, "Breakout Failed", shape.xcross, location.belowbar, pokeCol, size=size.tiny, text="fail", textcolor=pokeCol, force_overlay=true)
+
+// Volume pane
+color volColor = close > close[1] ? color.rgb(102, 187, 106) : color.rgb(247, 82, 95)
+plot(volume, "Volume", color=volColor, style=plot.style_columns)
+plot(showVolMa ? volMa : na, "Volume MA", color=color.orange)
+
+bool hvy = barstate.isconfirmed and volume > 0 and volume >= ta.highest(volume, 252)
+bool hvq = barstate.isconfirmed and not hvy and volume > 0 and volume >= ta.highest(volume, 63)
+plotchar(showVol and hvy ? volume : na, "HVY", "", location.absolute, color.new(#26C6DA, 0), text="HVY", textcolor=color.new(#26C6DA, 0), size=size.tiny)
+plotchar(showVol and hvq ? volume : na, "HVQ", "", location.absolute, color.new(#B8C0CC, 0), text="HVQ", textcolor=color.new(#B8C0CC, 0), size=size.tiny)
+
+// Status-line values
+plotchar(relVol1, "Rel Vol 1", "", location.top, color.new(color.aqua, 0), format=format.price, precision=2)
+plotchar(relVol2, "Rel Vol 2", "", location.top, color.new(color.aqua, 0), format=format.price, precision=2)
+plotchar(avgTurnover, "Avg Turnover", "", location.top, color.new(color.yellow, 0), format=format.price, precision=2)
+plotchar(trp, "TRP", "", location.top, color.new(color.white, 0), format=format.price, precision=2)
+
+plotchar(rsLine, "RS Line Value", "", location.top, color.new(#2962FF, 0), format=format.price, precision=2)
+
+// ─── RS LINE (inside the volume pane) ────────────────────────────────────────
+// One script has one pane, and its scale belongs to volume. So the RS line is
+// redrawn on the last bar for the bars currently visible, mapped into a band of
+// the pane. Every visible bar uses the same mapping, so the shape is the true
+// RS line. It redraws when you scroll or zoom; that is display only, the RS
+// values, dots and alerts themselves come from closed bars.
+var array<float> aRs = array.new<float>()
+var array<float> aRsMa = array.new<float>()
+var array<float> aVol = array.new<float>()
+var array<int> aT = array.new<int>()
+var array<int> aFlag = array.new<int>()
+aRs.push(rsLine)
+aRsMa.push(rsMa)
+aVol.push(volume)
+aT.push(time)
+aFlag.push(rsLeads ? 2 : rsNewHigh ? 1 : 0)
+if aT.size() > 5000
+    aRs.shift()
+    aRsMa.shift()
+    aVol.shift()
+    aT.shift()
+    aFlag.shift()
+
+var polyline plRs = na
+var polyline plRsMa = na
+var label rsTag = na
+var array<label> rsDots = array.new<label>()
+
+if barstate.islast
+    if not na(plRs)
+        polyline.delete(plRs)
+        plRs := na
+    if not na(plRsMa)
+        polyline.delete(plRsMa)
+        plRsMa := na
+    if not na(rsTag)
+        label.delete(rsTag)
+        rsTag := na
+    while rsDots.size() > 0
+        label.delete(rsDots.pop())
+
+    int n = aT.size()
+    if showRsLine and n > 1
+        int leftT = chart.left_visible_bar_time
+        int rightT = chart.right_visible_bar_time
+        float rMin = na
+        float rMax = na
+        float vMax = na
+        for i = n - 1 to 0
+            int t = aT.get(i)
+            if t < leftT
+                break
+            if t <= rightT
+                float r = aRs.get(i)
+                float m = showRsMa ? aRsMa.get(i) : na
+                float v = aVol.get(i)
+                if not na(r)
+                    rMin := na(rMin) ? r : math.min(rMin, r)
+                    rMax := na(rMax) ? r : math.max(rMax, r)
+                if not na(m)
+                    rMin := na(rMin) ? m : math.min(rMin, m)
+                    rMax := na(rMax) ? m : math.max(rMax, m)
+                if not na(v)
+                    vMax := na(vMax) ? v : math.max(vMax, v)
+        if not na(rMin) and rMax > rMin and not na(vMax) and vMax > 0
+            float lo = rsBandLow / 100.0
+            float hi = 0.97
+            array<chart.point> ptsRs = array.new<chart.point>()
+            array<chart.point> ptsMa = array.new<chart.point>()
+            int dots = 0
+            float lastY = na
+            int lastT = na
+            for i = n - 1 to 0
+                int t = aT.get(i)
+                if t < leftT
+                    break
+                if t <= rightT
+                    float r = aRs.get(i)
+                    float m = aRsMa.get(i)
+                    if not na(r)
+                        float y = vMax * (lo + (hi - lo) * (r - rMin) / (rMax - rMin))
+                        ptsRs.push(chart.point.from_time(t, y))
+                        if na(lastY)
+                            lastY := y
+                            lastT := t
+                        int f = aFlag.get(i)
+                        if showRsDots and f > 0 and dots < 120
+                            rsDots.push(label.new(t, y, "", xloc=xloc.bar_time, style=label.style_circle, color=f == 2 ? color.fuchsia : color.blue, size=size.tiny))
+                            dots += 1
+                    if showRsMa and not na(m)
+                        ptsMa.push(chart.point.from_time(t, vMax * (lo + (hi - lo) * (m - rMin) / (rMax - rMin))))
+            if ptsRs.size() > 1
+                bool rsUp = not na(rsMa) and rsLine >= rsMa
+                plRs := polyline.new(ptsRs, xloc=xloc.bar_time, line_color=na(rsMa) or rsUp ? #2962FF : #F23645, line_width=2)
+                rsTag := label.new(lastT, lastY, "RS vs " + rsChoice, xloc=xloc.bar_time, style=label.style_label_left, color=color.new(#2962FF, 20), textcolor=color.white, size=size.tiny)
+            if ptsMa.size() > 1
+                plRsMa := polyline.new(ptsMa, xloc=xloc.bar_time, line_color=color.orange, line_width=1)
+
+// Relative-volume label on the last bar (live value while the bar is open).
+var label relLbl = na
+if showRelLbl and barstate.islast
+    if na(relLbl)
+        relLbl := label.new(bar_index, volume, "", style=label.style_label_lower_left, color=color.gray, textcolor=#000000, size=size.small)
+    label.set_xy(relLbl, bar_index, volume)
+    label.set_text(relLbl, str.tostring(relVol1, "#.##") + "×\n" + str.tostring(relVol2, "#.##") + "×")
+
+plot(active ? peak : na, "Pivot", display=display.data_window)
+plot(baseN, "Base Count", display=display.data_window)
+plot(sigBO ? 1 : 0, "BreakoutSignal", display=display.none)
+
+// ─── ALERTS (bar close) ──────────────────────────────────────────────────────
+alertcondition(sigBase, "Base Formed", "Base Breakout Pro: a base has formed, pivot is set")
+alertcondition(sigBO, "Breakout", "Base Breakout Pro: close above the pivot")
+alertcondition(sigBO and not sigLowVol and not sigSquat, "Breakout With Volume", "Base Breakout Pro: breakout on adequate volume and a strong close")
+alertcondition(sigBO and sigSquat, "Squat Breakout", "Base Breakout Pro: breakout with a weak close (squat)")
+alertcondition(sigPoke, "Failed Poke", "Base Breakout Pro: high above the pivot but close below it")
+alertcondition(sigHeld, "Breakout Held", "Base Breakout Pro: breakout held above the pivot")
+alertcondition(sigFail, "Breakout Failed", "Base Breakout Pro: close back below the pivot")
+
+alertcondition(rsNewHigh, "RS New High", "{{ticker}}: RS line at a new high")
+alertcondition(rsLeads, "RS Leads Price", "{{ticker}}: RS line at a new high before price")
+alertcondition(barstate.isconfirmed and ta.crossover(rsLine, rsMa), "RS Crosses Above MA", "{{ticker}}: RS line crossed above its average")
+alertcondition(barstate.isconfirmed and ta.crossunder(rsLine, rsMa), "RS Crosses Below MA", "{{ticker}}: RS line crossed below its average")
+
+// ─── DASHBOARD ───────────────────────────────────────────────────────────────
+color pBg = color.new(#2B2F36, 4)
+color pHead = color.new(#3A4048, 0)
+color pTxt = #E7EAEE
+color pMut = #C2C7CE
+dPos = dashPos == "Top Left" ? position.top_left : dashPos == "Top Right" ? position.top_right : dashPos == "Bottom Left" ? position.bottom_left : position.bottom_right
+var table dash = table.new(dPos, 2, 14, bgcolor=pBg, frame_color=color.new(#6E7781, 35), frame_width=1, border_color=color.new(#535C66, 55), border_width=1, force_overlay=true)
+
+cell(int c, int r, string t, color tc, color bg) =>
+    table.cell(dash, c, r, t, text_color=tc, bgcolor=bg, text_size=size.small, text_halign=text.align_left)
+
+if showDash and barstate.islast
+    bool uc = not na(prevBaseLow) and bLow < prevBaseLow
+    int total = heldN + failN
+    float toPivot = active ? (peak / close - 1) * 100 : na
+    string st = active ? "B" + str.tostring(uc ? 1 : baseN + 1) + " forming · " + str.tostring(math.round(curWeeks)) + "w" : pending ? "Breakout · follow-through" : "No base (trending)"
+    cell(0, 0, "BASE BREAKOUT PRO", pTxt, pHead)
+    cell(1, 0, "BAR CLOSE", pMut, pHead)
+    cell(0, 1, "STATE", pMut, pBg)
+    cell(1, 1, st, active ? pivotCol : pMut, pBg)
+    cell(0, 2, "PIVOT", pMut, pBg)
+    cell(1, 2, active ? str.tostring(peak, format.mintick) : "–", pTxt, pBg)
+    cell(0, 3, "TO PIVOT", pMut, pBg)
+    cell(1, 3, na(toPivot) ? "–" : str.tostring(toPivot, "0.0") + "%", pTxt, pBg)
+    cell(0, 4, "BASE DEPTH", pMut, pBg)
+    cell(1, 4, active ? str.tostring(curDepth, "0.0") + "%" : "–", pTxt, pBg)
+    cell(0, 5, "RS SCORE vs " + rsChoice, pMut, pBg)
+    cell(1, 5, na(rsPerf) ? "–" : str.tostring(rsPerf, "+0.0;-0.0") + "%", na(rsPerf) ? pMut : rsPerf >= 0 ? pivotCol : pokeCol, pBg)
+    cell(0, 6, "HELD / FAIL", pMut, pBg)
+    cell(1, 6, str.tostring(heldN) + " / " + str.tostring(failN) + (total > 0 ? "  (" + str.tostring(100.0 * heldN / total, "0") + "% held)" : ""), pTxt, pBg)
+    cell(0, 7, "REL VOL (" + str.tostring(avgLen1) + " / " + str.tostring(avgLen2) + ")", pMut, pBg)
+    cell(1, 7, na(relVol1) ? "–" : str.tostring(relVol1, "0.00") + "× / " + (na(relVol2) ? "–" : str.tostring(relVol2, "0.00") + "×"), not na(relVol1) and relVol1 >= 1.5 ? pivotCol : pTxt, pBg)
+    cell(0, 8, "AVG TURNOVER", pMut, pBg)
+    cell(1, 8, na(avgTurnover) ? "–" : str.tostring(avgTurnover, "0.00") + (showInCr ? " Cr" : " M"), pTxt, pBg)
+    cell(0, 9, "ATR % TODAY / AVG 50", pMut, pBg)
+    cell(1, 9, (na(todayAtrPct) ? "–" : str.tostring(todayAtrPct, "0.00") + "%") + " / " + (na(trp) ? "–" : str.tostring(trp, "0.00") + "%"), pTxt, pBg)
+    cell(0, 13, "RS LINE", pMut, pBg)
+    cell(1, 13, na(rsLine) ? "no data" : na(rsMa) ? "–" : (rsLine >= rsMa ? "Outperforming" : "Underperforming") + (na(rsHi) ? "" : "  (" + str.tostring((rsLine / rsHi - 1) * 100, "0.0") + "% vs high)"), na(rsLine) or na(rsMa) ? pMut : rsLine >= rsMa ? pivotCol : pokeCol, pBg)
+    cell(0, 12, "PRICE vs CLOUD", pMut, pBg)
+    cell(1, 12, na(cloudTop) ? "–" : close > cloudTop ? "Above" : close < cloudBot ? "Below" : "Inside", na(cloudTop) ? pMut : close > cloudTop ? pivotCol : close < cloudBot ? pokeCol : pMut, pBg)
+    if showSector
+        cell(0, 10, "SECTOR", pMut, pBg)
+        cell(1, 10, syminfo.sector, pTxt, pBg)
+        cell(0, 11, "INDUSTRY", pMut, pBg)
+        cell(1, 11, syminfo.industry, pTxt, pBg)
+
+// ─── ATR TABLE ───────────────────────────────────────────────────────────────
+aPos = atrTblPos == "Top Left" ? position.top_left : atrTblPos == "Top Right" ? position.top_right : atrTblPos == "Bottom Left" ? position.bottom_left : position.bottom_right
+var table atrTbl = table.new(aPos, 2, 4, bgcolor=pBg, frame_color=color.new(#6E7781, 35), frame_width=1, border_color=color.new(#535C66, 55), border_width=1, force_overlay=true)
+if showAtrTbl and barstate.islast
+    table.cell(atrTbl, 0, 0, "ATR", text_color=color.yellow, text_size=size.small, text_halign=text.align_left)
+    table.cell(atrTbl, 1, 0, "Value", text_color=color.yellow, text_size=size.small, text_halign=text.align_left)
+    table.cell(atrTbl, 0, 1, "ATR (" + str.tostring(atrTblLen) + ")", text_color=color.aqua, text_size=size.small, text_halign=text.align_left)
+    table.cell(atrTbl, 1, 1, na(atrVal) ? "N/A" : str.tostring(atrVal, "#.##"), text_color=color.white, text_size=size.small, text_halign=text.align_left)
+    table.cell(atrTbl, 0, 2, "Today ATR %", text_color=color.aqua, text_size=size.small, text_halign=text.align_left)
+    table.cell(atrTbl, 1, 2, na(todayAtrPct) ? "N/A" : str.tostring(todayAtrPct, "#.##"), text_color=color.white, text_size=size.small, text_halign=text.align_left)
+    table.cell(atrTbl, 0, 3, "Avg ATR % (50)", text_color=color.orange, text_size=size.small, text_halign=text.align_left)
+    table.cell(atrTbl, 1, 3, na(trp) ? "N/A" : str.tostring(trp, "#.##"), text_color=color.white, text_size=size.small, text_halign=text.align_left)
+
+// ─── FUNDAMENTALS TABLE ──────────────────────────────────────────────────────
+// Reported figures only: values change when a new report is published.
+getFQ(string id) => request.financial(syminfo.tickerid, id, "FQ", ignore_invalid_symbol=true)
+getFY(string id) => request.financial(syminfo.tickerid, id, "FY", ignore_invalid_symbol=true)
+
+float epsQ = getFQ("EARNINGS_PER_SHARE_DILUTED")
+float revQ = getFQ("TOTAL_REVENUE")
+float patQ = getFQ("NET_INCOME")
+float epsY = getFY("EARNINGS_PER_SHARE_DILUTED")
+float revY = getFY("TOTAL_REVENUE")
+float patY = getFY("NET_INCOME")
+
+// % change versus the previously reported value (previous quarter / previous year).
+calcChange(float src) =>
+    float prev = ta.valuewhen(src != src[1], src[1], 0)
+    not na(src) and not na(prev) and prev != 0 ? (src - prev) / math.abs(prev) * 100 : na
+
+float epsQch = calcChange(epsQ)
+float revQch = calcChange(revQ)
+float patQch = calcChange(patQ)
+float epsYch = calcChange(epsY)
+float revYch = calcChange(revY)
+float patYch = calcChange(patY)
+
+fPos = fundPos == "Top Left" ? position.top_left : fundPos == "Top Right" ? position.top_right : fundPos == "Bottom Left" ? position.bottom_left : position.bottom_right
+var table fundTbl = table.new(fPos, 4, 7, bgcolor=pBg, frame_color=color.new(#6E7781, 35), frame_width=1, border_color=color.new(#535C66, 55), border_width=1, force_overlay=true)
+
+fCell(int c, int r, string t, color tc) =>
+    table.cell(fundTbl, c, r, t, text_color=tc, bgcolor=pBg, text_size=size.small, text_halign=text.align_left)
+
+chgCol(float v) => na(v) ? pMut : v > 0 ? color.lime : color.red
+chgTxt(float v) => na(v) ? "N/A" : str.tostring(v, "#.##") + "%"
+
+fRow(int r, string name, float val, float q, float y) =>
+    fCell(0, r, name, color.aqua)
+    fCell(1, r, na(val) ? "N/A" : str.tostring(val, "#.##"), pTxt)
+    fCell(2, r, chgTxt(q), chgCol(q))
+    fCell(3, r, chgTxt(y), chgCol(y))
+
+maRow(int r, string name, float v, color c) =>
+    fCell(0, r, name, c)
+    fCell(1, r, na(v) ? "N/A" : str.tostring(v, "#.##"), pTxt)
+    fCell(2, r, na(v) ? "" : close >= v ? "above" : "below", na(v) ? pMut : close >= v ? color.lime : color.red)
+    fCell(3, r, na(v) ? "" : str.tostring((close / v - 1) * 100, "+0.0;-0.0") + "%", pMut)
+
+if showFund and barstate.islast
+    fCell(0, 0, "Metric", color.yellow)
+    fCell(1, 0, "Current", color.yellow)
+    fCell(2, 0, "Q%", color.yellow)
+    fCell(3, 0, "Y%", color.yellow)
+    fRow(1, "EPS (qtr)", epsQ, epsQch, epsYch)
+    fRow(2, "Revenue (Rs Cr)", revQ / 1e7, revQch, revYch)
+    fRow(3, "PAT (Rs Cr)", patQ / 1e7, patQch, patYch)
+    maRow(4, "21 EMA", ema21, #F23645)
+    maRow(5, "50 MA", ma50, #9C6ADE)
+    maRow(6, "200 MA", ma200, #FF9800)
