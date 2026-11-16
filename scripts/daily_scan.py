@@ -289,7 +289,12 @@ def main():
     heat_syms = sorted({s for m in members.values() for s in m["symbol"]})
     print(f"Fetching fundamentals for {len(set(matched) | set(heat_syms))} stocks...")
     fund = ibs.fetch_fundamentals(sorted(set(matched) | set(heat_syms)))
-    print(f"  got data for {sum(1 for v in fund.values() if v)} stocks")
+    asked, got = len(set(matched) | set(heat_syms)), sum(1 for v in fund.values() if v)
+    print(f"  got data for {got} stocks")
+    if got < 0.5 * asked:
+        # Yahoo is rate-limiting us. Without market caps the market-cap filter
+        # would drop most stocks, so keep yesterday's data instead.
+        sys.exit(f"Fundamentals for only {got}/{asked} stocks (Yahoo rate limit?) - aborting so the site keeps the last good data.")
     ibs.apply_market_cap_filter(result, fund)      # every screen: market cap floor
     charted = sorted({s for t in result.screens.values() if not t.empty for s in t["symbol"]})
     print(f"Fetching quarterly results for {len(charted)} charted stocks...")
