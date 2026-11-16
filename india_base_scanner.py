@@ -256,10 +256,150 @@ _FUND_FIELDS = {
     "marketCap": "market_cap", "trailingPE": "pe", "priceToBook": "pb",
     "returnOnEquity": "roe", "debtToEquity": "debt_to_equity",
     "revenueGrowth": "revenue_growth", "earningsGrowth": "earnings_growth",
-    "profitMargins": "profit_margin", "dividendYield": "dividend_yield",
+    "profitMargins": "profit_margin",
     "trailingEps": "eps", "bookValue": "book_value", "beta": "beta",
     "sector": "sector", "industry": "yf_industry", "longName": "name",
 }
+
+
+def _num(v) -> Optional[float]:
+    """A finite float, or None."""
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return None
+    return f if np.isfinite(f) else None
+
+
+def dividend_yield_pct(info: dict) -> Optional[float]:
+    """Dividend yield in %, the same whatever the yfinance version.
+
+    Yahoo's ``dividendYield`` switched from a fraction (0.0025) to a percent
+    (0.25) in newer yfinance, so a small percent was being multiplied by 100
+    (0.23% showed as 23%). Work it out from the dividend per share and price
+    instead, and fall back to ``trailingAnnualDividendYield`` (always a fraction).
+    """
+    rate = _num(info.get("dividendRate"))
+    price = _num(info.get("currentPrice")) or _num(info.get("regularMarketPrice"))
+    if rate is not None and price:
+        return round(rate / price * 100, 2)
+    trail = _num(info.get("trailingAnnualDividendYield"))
+    if trail is not None:
+        return round(trail * 100, 2)
+    return None
+
+
+def free_float_pct(info: dict) -> Optional[float]:
+    """Shares free to trade as a % of all shares (Yahoo floatShares / sharesOutstanding)."""
+    fl, tot = _num(info.get("floatShares")), _num(info.get("sharesOutstanding"))
+    if fl is None or not tot or not 0 < fl <= tot * 1.02:
+        return None
+    return round(min(fl / tot, 1.0) * 100, 1)
+
+
+def _stmt_row(stmt: pd.DataFrame, names) -> Optional[pd.Series]:
+    for n in names:
+        if n in stmt.index:
+            return pd.to_numeric(stmt.loc[n], errors="coerce")
+    return None
+
+
+def quarterly_rows(stmt: Optional[pd.DataFrame], n: int = 5) -> List[dict]:
+    """Last ``n`` quarters from a yfinance quarterly income statement.
+
+    Each row: quarter label ("Dec-25"), EPS, sales and net profit in ₹ crore,
+    operating margin %, and EPS / sales growth against the same quarter a year
+    earlier (only when Yahoo has that quarter; it often has just 4-6 quarters
+    for NSE stocks). Newest quarter first.
+    """
+    if stmt is None or not isinstance(stmt, pd.DataFrame) or stmt.empty:
+        return []
+    stmt = stmt.copy()
+    stmt.columns = pd.to_datetime(stmt.columns, errors="coerce")
+    stmt = stmt.loc[:, stmt.columns.notna()]
+    stmt = stmt.loc[:, ~stmt.columns.duplicated()].sort_index(axis=1, ascending=False)
+    sales = _stmt_row(stmt, ("Total Revenue", "Operating Revenue"))
+    eps = _stmt_row(stmt, ("Diluted EPS", "Basic EPS"))
+    op = _stmt_row(stmt, ("Operating Income", "Total Operating Income As Reported"))
+    pat = _stmt_row(stmt, ("Net Income", "Net Income Common Stockholders"))
+
+    def val(row, col):
+        return None if row is None else _num(row.get(col))
+
+    def year_ago(col):
+        target = col - pd.DateOffset(years=1)
+        near = [c for c in stmt.columns if abs((c - target).days) <= 20]
+        return near[0] if near else None
+
+    def growth(now, then):
+        if now is None or then is None or then == 0:
+            return None
+        return round((now - then) / abs(then) * 100, 1)
+
+    out = []
+    for col in stmt.columns:
+        s, e = val(sales, col), val(eps, col)
+        if s is None and e is None:
+            continue
+        o, p = val(op, col), val(pat, col)
+        ya = year_ago(col)
+        out.append({
+            "q": col.strftime("%b-%y"),
+            "eps": None if e is None else round(e, 2),
+            "eps_yoy": growth(e, val(eps, ya)) if ya is not None else None,
+            "sales_cr": None if s is None else round(s / 1e7, 1),
+            "sales_yoy": growth(s, val(sales, ya)) if ya is not None else None,
+            "pat_cr": None if p is None else round(p / 1e7, 1),
+            "opm": round(o / s * 100, 1) if o is not None and s else None,
+        })
+        if len(out) == n:
+            break
+    return out
+
+
+def fetch_quarterly(symbols: Iterable[str], suffix: str = ".NS", workers: int = 6,
+                    n: int = 5, verbose: bool = True) -> Dict[str, List[dict]]:
+    """Quarterly results (see ``quarterly_rows``) from Yahoo Finance, one request per stock."""
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    import yfinance as yf
+
+    def one(sym):
+        for attempt in range(2):
+            try:
+                return sym, quarterly_rows(yf.Ticker(sym + suffix).quarterly_income_stmt, n)
+            except Exception:
+                time.sleep(1.5 * (attempt + 1))
+        return sym, []
+
+    syms = list(dict.fromkeys(symbols))
+    res: Dict[str, List[dict]] = {}
+    with ThreadPoolExecutor(max_workers=workers) as ex:
+        futs = [ex.submit(one, s) for s in syms]
+        for k, f in enumerate(as_completed(futs), 1):
+            try:
+                sym, rows = f.result(timeout=60)
+                if rows:
+                    res[sym] = rows
+            except Exception:
+                pass
+            if verbose and k % 100 == 0:
+                print(f"  quarterly results: {k}/{len(syms)}")
+    return res
+
+
+def chart_stats(df: pd.DataFrame) -> dict:
+    """Trading stats for the chart panel: turnover (₹ crore), ADR % and relative volume."""
+    c, v = df["Close"], df["Volume"].fillna(0)
+    to = c * v / 1e7
+    adr = (df["High"] / df["Low"] - 1) * 100
+    v50 = v.iloc[-51:-1].mean() if len(v) > 1 else np.nan   # 50 sessions before today
+    r = lambda x: None if x is None or not np.isfinite(x) else round(float(x), 2)
+    return {
+        "turnover_1d_cr": r(to.iloc[-1]),
+        "turnover_50_cr": r(to.tail(50).mean()),
+        "adr20": r(adr.tail(20).mean()),
+        "rvol50": r(v.iloc[-1] / v50) if v50 and np.isfinite(v50) else None,
+    }
 
 
 def fetch_fundamentals(symbols: Iterable[str], suffix: str = ".NS", workers: int = 6,
@@ -285,9 +425,12 @@ def fetch_fundamentals(symbols: Iterable[str], suffix: str = ".NS", workers: int
                 for k in ("roe", "revenue_growth", "earnings_growth", "profit_margin"):
                     if k in out and isinstance(out[k], (int, float)):
                         out[k] = round(out[k] * 100, 2)
-                dy = out.get("dividend_yield")
-                if isinstance(dy, (int, float)) and dy < 1:   # older yfinance gives a fraction
-                    out["dividend_yield"] = round(dy * 100, 2)
+                dy = dividend_yield_pct(info)
+                if dy is not None:
+                    out["dividend_yield"] = dy
+                ff = free_float_pct(info)
+                if ff is not None:
+                    out["free_float"] = ff
                 if isinstance(out.get("market_cap"), (int, float)):
                     out["market_cap_cr"] = round(out["market_cap"] / 1e7, 0)
                 return sym, out

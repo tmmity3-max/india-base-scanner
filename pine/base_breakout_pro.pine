@@ -55,7 +55,8 @@ showPoke = input.bool(true, "Show Failed Pokes", group=gV)
 showOut = input.bool(false, "Show Failed-Breakout Markers", group=gV)
 showDash = input.bool(true, "Show Dashboard", group=gV)
 dashPos = input.string("Top Right", "Dashboard Position", options=["Top Left", "Top Right", "Bottom Left", "Bottom Right"], group=gV)
-showFund = input.bool(true, "Show Fundamentals Table", group=gV, tooltip="EPS, revenue and net profit with quarter-on-quarter and year-on-year change, plus the moving-average values.")
+showFund = input.bool(true, "Show Fundamentals Table", group=gV)
+fundStyle = input.string("Quarterly", "Fundamentals Layout", options=["Quarterly", "Compact"], group=gV, tooltip="Quarterly: the last 5 quarters of EPS and sales with year-on-year growth and operating margin, plus market cap, P/E, free float, ROE, distance from the 52-week high and low, turnover, ADR and relative volume. Compact: latest EPS, revenue and net profit with Q% and Y% change, plus the moving-average values.")
 fundPos = input.string("Bottom Right", "Fundamentals Position", options=["Top Left", "Top Right", "Bottom Left", "Bottom Right"], group=gV)
 
 gI = "Ichimoku"
@@ -525,14 +526,85 @@ float epsYch = calcChange(epsY)
 float revYch = calcChange(revY)
 float patYch = calcChange(patY)
 
+// Quarterly history. With gaps_on a financial series has a value only on the bar
+// where a new report arrives, so every value is one quarter. Up to 9 quarters
+// are kept so each of the 5 shown can be compared with the same quarter a year
+// earlier. A quarter is keyed as year * 12 + month of the quarter's last month.
+getQG(string id) => request.financial(syminfo.tickerid, id, "FQ", barmerge.gaps_on, ignore_invalid_symbol=true)
+float qEpsNew = getQG("EARNINGS_PER_SHARE_DILUTED")
+float qRevNew = getQG("TOTAL_REVENUE")
+float qOpNew = getQG("OPER_INCOME")
+float epsTtm = request.financial(syminfo.tickerid, "EARNINGS_PER_SHARE_DILUTED", "TTM", ignore_invalid_symbol=true)
+float roeQ = request.financial(syminfo.tickerid, "RETURN_ON_EQUITY", "FQ", ignore_invalid_symbol=true)
+// 52-week range, turnover, ADR and relative volume always from daily bars, whatever the chart timeframe.
+[d52Hi, d52Lo, dClose, dTo, dTo50, dAdr, dRvol] = request.security(syminfo.tickerid, "D", [ta.highest(high, 252), ta.lowest(low, 252), close, close * volume, ta.sma(close * volume, 50), ta.sma((high / low - 1) * 100, 20), volume / ta.sma(volume, 50)[1]], ignore_invalid_symbol=true)
+
+// Reports arrive a few weeks after the quarter ends (or on the quarter-end date
+// itself), so the quarter is the last calendar quarter ending before the bar's
+// date plus 5 days: a report dated 10 Feb 2026 is the Dec-25 quarter.
+qKeyOf(int t) =>
+    int tt = t + 5 * 86400000
+    int m0 = month(tt) - 1
+    int qStart = m0 - m0 % 3
+    qStart == 0 ? (year(tt) - 1) * 12 + 12 : year(tt) * 12 + qStart
+
+qLabel(int k) =>
+    int y = math.floor((k - 1) / 12)
+    int m = k - y * 12
+    string mn = m == 3 ? "Mar" : m == 6 ? "Jun" : m == 9 ? "Sep" : "Dec"
+    mn + "-" + str.substring(str.tostring(y), 2)
+
+var array<int> qKey = array.new<int>()
+var array<float> qEps = array.new<float>()
+var array<float> qRev = array.new<float>()
+var array<float> qOp = array.new<float>()
+if not na(qEpsNew) or not na(qRevNew) or not na(qOpNew)
+    int k = qKeyOf(time)
+    if array.size(qKey) > 0 and array.get(qKey, 0) == k
+        // another field of the same report arriving on a later bar
+        if not na(qEpsNew)
+            array.set(qEps, 0, qEpsNew)
+        if not na(qRevNew)
+            array.set(qRev, 0, qRevNew)
+        if not na(qOpNew)
+            array.set(qOp, 0, qOpNew)
+    else
+        array.unshift(qKey, k)
+        array.unshift(qEps, qEpsNew)
+        array.unshift(qRev, qRevNew)
+        array.unshift(qOp, qOpNew)
+        if array.size(qKey) > 9
+            array.pop(qKey)
+            array.pop(qEps)
+            array.pop(qRev)
+            array.pop(qOp)
+
+growth(float now, float then) => not na(now) and not na(then) and then != 0 ? (now - then) / math.abs(then) * 100 : na
+
+// index of the same quarter one year earlier, or -1
+yearAgo(int i) =>
+    int found = -1
+    int target = array.get(qKey, i) - 12
+    int n = array.size(qKey)
+    // guard: a Pine for loop counts down when start > end
+    if i + 1 < n
+        for j = i + 1 to n - 1
+            if array.get(qKey, j) == target
+                found := j
+                break
+    found
+
+bool quarterly = fundStyle == "Quarterly"
 fPos = fundPos == "Top Left" ? position.top_left : fundPos == "Top Right" ? position.top_right : fundPos == "Bottom Left" ? position.bottom_left : position.bottom_right
-var table fundTbl = table.new(fPos, 4, 7, bgcolor=pBg, frame_color=color.new(#6E7781, 35), frame_width=1, border_color=color.new(#535C66, 55), border_width=1, force_overlay=true)
+var table fundTbl = table.new(fPos, quarterly ? 6 : 4, quarterly ? 10 : 7, bgcolor=pBg, frame_color=color.new(#6E7781, 35), frame_width=1, border_color=color.new(#535C66, 55), border_width=1, force_overlay=true)
 
 fCell(int c, int r, string t, color tc) =>
     table.cell(fundTbl, c, r, t, text_color=tc, bgcolor=pBg, text_size=size.small, text_halign=text.align_left)
 
 chgCol(float v) => na(v) ? pMut : v > 0 ? color.lime : color.red
 chgTxt(float v) => na(v) ? "N/A" : str.tostring(v, "#.##") + "%"
+numTxt(float v, string f) => na(v) ? "–" : str.tostring(v, f)
+pctTxt(float v) => na(v) ? "–" : str.tostring(v, "0") + "%"
 
 fRow(int r, string name, float val, float q, float y) =>
     fCell(0, r, name, color.aqua)
@@ -546,7 +618,66 @@ maRow(int r, string name, float v, color c) =>
     fCell(2, r, na(v) ? "" : close >= v ? "above" : "below", na(v) ? pMut : close >= v ? color.lime : color.red)
     fCell(3, r, na(v) ? "" : str.tostring((close / v - 1) * 100, "+0.0;-0.0") + "%", pMut)
 
-if showFund and barstate.islast
+varip bool fundMerged = false   // varip: not rolled back on realtime ticks, so the cells are merged once
+if showFund and barstate.islast and quarterly
+    // header: sector / industry and ROE, then market cap, P/E and free float
+    if not fundMerged
+        table.merge_cells(fundTbl, 0, 0, 3, 0)
+        fundMerged := true
+    fCell(0, 0, syminfo.sector + " · " + syminfo.industry, pTxt)
+    fCell(4, 0, "ROE", pMut)
+    fCell(5, 0, pctTxt(roeQ), pTxt)
+    float mcapCr = syminfo.shares_outstanding_total * close / 1e7
+    float pe = epsTtm > 0 ? close / epsTtm : na
+    float ffl = syminfo.shares_outstanding_total > 0 ? syminfo.shares_outstanding_float / syminfo.shares_outstanding_total * 100 : na
+    fCell(0, 1, "MCap", pMut)
+    fCell(1, 1, na(mcapCr) ? "–" : mcapCr >= 1000 ? str.tostring(mcapCr / 1000, "0.0") + "K cr" : str.tostring(mcapCr, "0") + " cr", pTxt)
+    fCell(2, 1, "P/E", pMut)
+    fCell(3, 1, numTxt(pe, "0.0"), pTxt)
+    fCell(4, 1, "FFloat %", pMut)
+    fCell(5, 1, numTxt(ffl, "0"), pTxt)
+    // quarters, newest first
+    fCell(0, 2, "Qtr", color.yellow)
+    fCell(1, 2, "EPS", color.yellow)
+    fCell(2, 2, "YoY %", color.yellow)
+    fCell(3, 2, "Sales Cr", color.yellow)
+    fCell(4, 2, "YoY %", color.yellow)
+    fCell(5, 2, "OPM", color.yellow)
+    int nq = math.min(5, array.size(qKey))
+    for r = 0 to 4
+        if r < nq
+            int j = yearAgo(r)
+            float e = array.get(qEps, r)
+            float rv = array.get(qRev, r)
+            float op = array.get(qOp, r)
+            float eY = j >= 0 ? growth(e, array.get(qEps, j)) : na
+            float rY = j >= 0 ? growth(rv, array.get(qRev, j)) : na
+            fCell(0, 3 + r, qLabel(array.get(qKey, r)), color.aqua)
+            fCell(1, 3 + r, numTxt(e, "0.0#"), pTxt)
+            fCell(2, 3 + r, pctTxt(eY), chgCol(eY))
+            fCell(3, 3 + r, na(rv) ? "–" : str.tostring(rv / 1e7, "0.0"), pTxt)
+            fCell(4, 3 + r, pctTxt(rY), chgCol(rY))
+            fCell(5, 3 + r, not na(op) and not na(rv) and rv != 0 ? str.tostring(op / rv * 100, "0") + "%" : "–", pTxt)
+        else
+            for c = 0 to 5
+                fCell(c, 3 + r, c == 0 ? "–" : "", pMut)
+    // price and trading stats from daily bars
+    float fromHi = d52Hi > 0 ? (dClose / d52Hi - 1) * 100 : na
+    float aboveLo = d52Lo > 0 ? (dClose / d52Lo - 1) * 100 : na
+    fCell(0, 8, "52W High", pMut)
+    fCell(1, 8, na(fromHi) ? "–" : str.tostring(fromHi, "+0.0;-0.0") + "%", pTxt)
+    fCell(2, 8, "TO Cr 1D", pMut)
+    fCell(3, 8, na(dTo) ? "–" : str.tostring(dTo / 1e7, "0.0"), pTxt)
+    fCell(4, 8, "ADR 20", pMut)
+    fCell(5, 8, na(dAdr) ? "–" : str.tostring(dAdr, "0.00") + "%", pTxt)
+    fCell(0, 9, "52W Low", pMut)
+    fCell(1, 9, na(aboveLo) ? "–" : str.tostring(aboveLo, "+0.0;-0.0") + "%", pTxt)
+    fCell(2, 9, "TO Cr 50D", pMut)
+    fCell(3, 9, na(dTo50) ? "–" : str.tostring(dTo50 / 1e7, "0.0"), pTxt)
+    fCell(4, 9, "RVol 50", pMut)
+    fCell(5, 9, na(dRvol) ? "–" : str.tostring(dRvol, "0.00") + "×", not na(dRvol) and dRvol >= 1.5 ? color.lime : pTxt)
+
+if showFund and barstate.islast and not quarterly
     fCell(0, 0, "Metric", color.yellow)
     fCell(1, 0, "Current", color.yellow)
     fCell(2, 0, "Q%", color.yellow)
