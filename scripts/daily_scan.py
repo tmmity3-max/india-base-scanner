@@ -83,8 +83,7 @@ def chart_payload(sym: str, df: pd.DataFrame, result: ibs.ScanResult, fund: dict
                              ("ipo_high", "ipo_base", "IPO high"),
                              ("ath", "bluesky", "All-time high"),
                              ("murphy_entry", "murphy", "Murphy entry"),
-                             ("base_pivot", "base_bo", "Base pivot"),
-                             ("ich_cloud_top", "ichimoku", "Cloud top")):
+                             ("base_pivot", "base_bo", "Base pivot")):
         val = row.get(key)
         if bool(row.get(flag, False)) and val == val and val is not None:
             levels.append({"label": label, "price": _clean(val)})
@@ -93,6 +92,9 @@ def chart_payload(sym: str, df: pd.DataFrame, result: ibs.ScanResult, fund: dict
     payload["bases"] = ibs.base_boxes(full, result.config, since=tail.index[0])
     payload["screens"] = [n for n, t in result.screens.items()
                           if not t.empty and sym in set(t["symbol"])]
+    # Ichimoku view (adaptive lines, signals, zones, tracked setup) for stocks on that screen
+    if "Ichimoku" in payload["screens"]:
+        payload["ich"] = ibs.ichimoku_chart(full, result.config, len(tail))
     hi52 = float(full["High"].tail(252).max()); lo52 = float(full["Low"].tail(252).min())
     payload["hi52"], payload["lo52"] = _clean(hi52), _clean(lo52)
     payload["fund"] = {k: _clean(v) for k, v in fund.get(sym, {}).items()} if fund else {}
