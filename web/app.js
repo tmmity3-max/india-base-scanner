@@ -15,7 +15,7 @@
     "Blue Sky": "At or breaking out to an all-time high, with strong relative strength.",
     "Murphy": "John Murphy's trend-following: above a rising 40-week SMA, with a fresh 10/50 crossover, 4-week-rule breakout or crossover + 2-week breakout in the last 5 sessions. Newest signals first.",
     "Base Breakout": "Numbered bases with a pivot: at least 3 weeks below a high with a 5–35% pullback. Pick a stage: forming, fresh breakout, climbing or played out. RS 65 or more and a market cap above ₹2,000 crore.",
-    "Ichimoku": "Closed up through the top of the Ichimoku cloud in the last 5 sessions and still above it, with Tenkan above Kijun and the Chikou span clear of price. Newest breakouts first.",
+    "Ichimoku": "Adaptive Ichimoku: a bullish signal in the last 5 sessions (a scored Tenkan/Kijun cross, a cloud breakout on volume, or a retest of the cloud) with nothing bearish since. Newest first.",
     "Multi-Year Base": "Back at a high that held for two years or more. Sorted by base length.",
     "IPO Base": "Recent listings basing just under their post-listing high.",
     "Trend Template": "Every liquid stock in a Stage-2 uptrend with RS 70 or more. The pool the VCP screen draws from.",
@@ -28,7 +28,7 @@
     "Base Breakout": {
       of: (r) => r.base_state,
       list: [["Forming", "resting under the pivot"], ["Fresh breakout", "cleared the pivot in the last 5 sessions"],
-             ["Climbing", "broke out earlier and still holding"], ["Played out", "back under the pivot, or 25%+ above it"]],
+             ["Climbing", "broke out earlier and still holding"], ["Played out", "the breakout failed: closed back under the pivot"]],
     },
     "VCP": {
       of: (r) => (r.vcp_pct_from_pivot > 0 ? "Breaking out" : "Setting up"),
@@ -43,8 +43,9 @@
       list: [["Signal today", "entry signal on the latest bar"], ["1–2 sessions ago", "still close to the entry"], ["3–5 sessions ago", "check how far it has moved"]],
     },
     "Ichimoku": {
-      of: (r) => (r.ich_from === "Below cloud" ? "From below the cloud" : "From inside the cloud"),
-      list: [["From below the cloud", "crossed the whole cloud"], ["From inside the cloud", "was already in the cloud"]],
+      of: (r) => r.ich_signal,
+      list: [["TK cross", "Tenkan crossed above Kijun with a score of 50+"], ["Cloud breakout", "closed up through the cloud on volume"],
+             ["Cloud retest", "came back to the cloud edge and held"]],
     },
     "Multi-Year Base": {
       of: (r) => (r.myb_pct_from_pivot >= 0 ? "Above the old high" : "Under the old high"),
@@ -62,7 +63,7 @@
   // The chart shows only the key level of the screen you are on, so the lines don't pile up.
   const SCREEN_LEVEL = {
     "VCP": "VCP pivot", "Blue Sky": "All-time high", "Murphy": "Murphy entry",
-    "Multi-Year Base": "Multi-year high", "IPO Base": "IPO high", "Ichimoku": "Cloud top",
+    "Multi-Year Base": "Multi-year high", "IPO Base": "IPO high",
   };
   // Filters that apply to every screen: [key, label, test(row, value)]
   const FILTERS = [
@@ -115,10 +116,9 @@
     base_pivot: ["Pivot ₹", "num"], base_pct_from_pivot: ["From pivot %", "signed"],
     base_weeks: ["Base weeks", "num"], base_depth: ["Base depth %", "pct"],
     base_tags: ["Tags", "txt"], base_days_ago: ["Breakout days ago", "int"],
-    ich_days_ago: ["Days ago", "int"], ich_from: ["Broke out from", "txt"],
-    ich_cloud_top: ["Cloud top ₹", "num"], ich_pct_above_cloud: ["Above cloud %", "signed"],
-    ich_tk_bullish: ["Tenkan > Kijun", "bool"], ich_chikou_ok: ["Chikou clear", "bool"],
-    ich_future_cloud: ["Cloud ahead", "txt"],
+    ich_signal: ["Signal", "txt"], ich_days_ago: ["Days ago", "int"], ich_score: ["Score", "int"],
+    ich_trend: ["Trend", "txt"], ich_momentum: ["Momentum", "txt"], ich_cloud: ["Price vs cloud", "txt"],
+    ich_entry: ["Entry ₹", "num"], ich_sl: ["Stop ₹", "num"], ich_tp1: ["Target 1 ₹", "num"],
   };
 
   const $ = (id) => document.getElementById(id);
@@ -251,30 +251,59 @@
   }
 
   // =====================================================================
-  // Ichimoku lines from the chart's own bars (9 / 26 / 52, displaced 26), as
-  // charting platforms draw them: the cloud is shifted 25 bars forward, so it
-  // runs past the last candle, and the Chikou span is the close shifted 25 back.
-  const ICH = { tenkan: 9, kijun: 26, senkouB: 52, shift: 25 };
+  // Ichimoku view. The scan sends the adaptive lines, the signals, the Kijun
+  // support/resistance zones and the tracked setup in `c.ich`. Without it (an
+  // older data file) the classic 9 / 26 / 52 lines are worked out here, with no
+  // signals. The cloud is shifted forward and the Chikou span shifted back.
   function computeIchimoku(c) {
-    const n = c.c.length;
-    const mid = (k) => {
-      const out = new Array(n).fill(null);
-      for (let i = k - 1; i < n; i++) {
-        let hi = -Infinity, lo = Infinity;
-        for (let j = i - k + 1; j <= i; j++) { if (c.h[j] > hi) hi = c.h[j]; if (c.l[j] < lo) lo = c.l[j]; }
-        out[i] = (hi + lo) / 2;
-      }
-      return out;
-    };
-    const tenkan = mid(ICH.tenkan), kijun = mid(ICH.kijun), sb = mid(ICH.senkouB);
-    const cloudA = new Array(n + ICH.shift).fill(null), cloudB = new Array(n + ICH.shift).fill(null);
+    const n = c.c.length, src = c.ich || null, shift = src ? src.shift : 25;
+    let tenkan, kijun, sa, sb;
+    if (src) {
+      ({ tenkan, kijun } = src); sa = src.spanA; sb = src.spanB;
+    } else {
+      const mid = (k) => {
+        const out = new Array(n).fill(null);
+        for (let i = k - 1; i < n; i++) {
+          let hi = -Infinity, lo = Infinity;
+          for (let j = i - k + 1; j <= i; j++) { if (c.h[j] > hi) hi = c.h[j]; if (c.l[j] < lo) lo = c.l[j]; }
+          out[i] = (hi + lo) / 2;
+        }
+        return out;
+      };
+      tenkan = mid(9); kijun = mid(26); sb = mid(52);
+      sa = tenkan.map((t, i) => (t != null && kijun[i] != null ? (t + kijun[i]) / 2 : null));
+    }
+    const cloudA = new Array(n + shift).fill(null), cloudB = new Array(n + shift).fill(null);
     const chikou = new Array(n).fill(null);
     for (let i = 0; i < n; i++) {
-      if (tenkan[i] != null && kijun[i] != null) cloudA[i + ICH.shift] = (tenkan[i] + kijun[i]) / 2;
-      if (sb[i] != null) cloudB[i + ICH.shift] = sb[i];
-      if (i + ICH.shift < n) chikou[i] = c.c[i + ICH.shift];
+      if (sa[i] != null) cloudA[i + shift] = sa[i];
+      if (sb[i] != null) cloudB[i + shift] = sb[i];
+      if (i + shift < n) chikou[i] = c.c[i + shift];
     }
-    return { tenkan, kijun, cloudA, cloudB, chikou };
+    const at = new Map(c.d.map((d, i) => [d, i]));
+    const idx = (d) => (at.has(d) ? at.get(d) : null);
+    const events = [], zones = [];
+    for (const e of (src && src.events) || []) { const i = idx(e.d); if (i != null) events.push({ ...e, i }); }
+    for (const z of (src && src.zones) || []) {
+      const i1 = idx(z.e);
+      if (i1 != null) zones.push({ ...z, i0: idx(z.s) == null ? 0 : idx(z.s), i1 });
+    }
+    let trade = null;
+    if (src && src.trade && idx(src.trade.d) != null) {
+      trade = { ...src.trade, i: idx(src.trade.d), iEnd: src.trade.end ? idx(src.trade.end) : null };
+    }
+    return { shift, tenkan, kijun, cloudA, cloudB, chikou, events, zones, trade,
+             info: src ? { trend: src.trend, momentum: src.momentum, score: src.score, stats: src.stats } : null };
+  }
+  // Ichimoku colours, brighter on a dark page and deeper on a light one
+  function ichColors() {
+    const m = /^#?([0-9a-f]{2})/i.exec(css("--paper").trim());
+    const dark = m ? parseInt(m[1], 16) < 128 : false;
+    return dark
+      ? { bull: "#00E676", bear: "#FF5252", tenkan: "#5B8CFF", kijun: "#F06292", chikou: "#FF9800", brk: "#00BCD4", div: "#AB47BC", twist: "#FFD54F",
+          entry: "#5C8AAE", sl: "#E57373", tp: "#66BB6A", hit: "#4DB6AC", tagText: "#1A1A1A" }
+      : { bull: "#00A152", bear: "#D32F2F", tenkan: "#2962FF", kijun: "#E91E63", chikou: "#F57C00", brk: "#0097A7", div: "#8E24AA", twist: "#F9A825",
+          entry: "#34495E", sl: "#B71C1C", tp: "#388E3C", hit: "#00695C", tagText: "#FFFFFF" };
   }
 
   // Chart: candles, SMAs or Ichimoku, key levels, volume, RS line, with zoom and pan
@@ -318,7 +347,7 @@
 
     get n() { return this.c ? this.c.c.length : 0; }
     // empty bars kept to the right of the last candle: room for the forward cloud
-    get lead() { return this.ich ? ICH.shift + 3 : 2; }
+    get lead() { return this.ich ? this.ich.shift + 3 : 2; }
     defaultBars() { return Math.min(this.n, this.mini ? 130 : 250); }
     reset() { this.auto = true; this.show(this.defaultBars()); this.emit(); }
     show(bars) {
@@ -358,6 +387,72 @@
       this.draw();
     }
     pan(bars) { if (!this.c) return; this.start += bars; this.end += bars; this.clampX(); this.draw(); }
+
+    // Ichimoku signals and the tracked setup, drawn over the candles
+    drawIchimokuMarks(ctx, K, { X, Y, i0, i1, n, plotW, step, mini }) {
+      const c = this.c, { events, trade } = this.ich;
+      const fs = mini ? 9 : 10.5;
+      ctx.save();
+      ctx.font = `600 ${fs}px ${css("--body")}`; ctx.textBaseline = "middle";
+      const pill = (x, y, text, bg, up) => {   // a small label with a pointer towards the bar
+        const w = ctx.measureText(text).width + 8, h = fs + 6, top = up ? y : y - h;
+        ctx.fillStyle = bg;
+        ctx.beginPath(); ctx.moveTo(x, up ? y - 4 : y + 4); ctx.lineTo(x - 4, up ? y : y); ctx.lineTo(x + 4, up ? y : y); ctx.closePath(); ctx.fill();
+        ctx.fillRect(x - w / 2, top, w, h);
+        ctx.fillStyle = "#FFFFFF"; ctx.fillText(text, x - w / 2 + 4, top + h / 2 + 0.5);
+        return h + 5;
+      };
+      const below = new Map(), above = new Map();   // stack several marks on one bar
+      for (const e of events) {
+        if (e.i < i0 || e.i > i1) continue;
+        const x = X(e.i), up = /up$|^long$/.test(e.k);
+        const used = up ? below : above, off = used.get(e.i) || 0;
+        const y = up ? Y(c.l[e.i]) + 8 + off : Y(c.h[e.i]) - 8 - off;
+        let adv = 12;
+        if (e.k === "long" || e.k === "short") {
+          const text = (e.k === "long" ? "Long" : "Short") + (e.s != null && !mini ? ` ${e.s}%` : "");
+          adv = pill(x, y, text, e.k === "long" ? K.bull : K.bear, up);
+        } else if (e.k === "div_up" || e.k === "div_down") {
+          if (!mini) adv = pill(x, y, up ? "Div ▲" : "Div ▼", K.div, up);
+        } else if (e.k.startsWith("break")) {         // cloud breakout: diamond
+          const r = mini ? 4 : 5.5, cy = up ? y + r : y - r;
+          ctx.fillStyle = K.brk; ctx.beginPath();
+          ctx.moveTo(x, cy - r); ctx.lineTo(x + r, cy); ctx.lineTo(x, cy + r); ctx.lineTo(x - r, cy); ctx.closePath(); ctx.fill();
+          if (!mini) { ctx.fillStyle = K.brk; const t = up ? "☁▲" : "☁▼"; ctx.fillText(t, x - ctx.measureText(t).width / 2, up ? cy + r + 8 : cy - r - 8); }
+          adv = mini ? 12 : 30;
+        } else if (e.k.startsWith("retest")) {        // retest of the cloud edge: small dot
+          ctx.fillStyle = K.brk; ctx.globalAlpha = 0.7; ctx.beginPath(); ctx.arc(x, up ? y + 3 : y - 3, mini ? 2.2 : 3, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1;
+          adv = 10;
+        } else if (e.k.startsWith("twist")) {         // the cloud ahead changes colour: cross
+          const r = mini ? 2.5 : 3.5, cy = up ? y + r : y - r;
+          ctx.strokeStyle = K.twist; ctx.lineWidth = 1.6; ctx.beginPath();
+          ctx.moveTo(x - r, cy - r); ctx.lineTo(x + r, cy + r); ctx.moveTo(x + r, cy - r); ctx.lineTo(x - r, cy + r); ctx.stroke();
+          if (!mini) { ctx.fillStyle = K.twist; const t = up ? "⚡▲" : "⚡▼"; ctx.fillText(t, x - ctx.measureText(t).width / 2, up ? cy + r + 8 : cy - r - 8); }
+          adv = mini ? 10 : 26;
+        }
+        used.set(e.i, off + adv);
+      }
+      // the tracked setup: entry, stop and three targets from the signal bar
+      if (trade && trade.i <= i1 + 1) {
+        const xa = X(trade.i), xb = Math.min(plotW, trade.open || trade.iEnd == null ? X(n - 1 + 5) : Math.max(X(trade.iEnd), xa + step * 6));
+        const pct = (p) => { const v = (p / trade.entry - 1) * 100; return ` (${v >= 0 ? "+" : ""}${v.toFixed(2)}%)`; };
+        const rows = [
+          ["ENTRY", trade.entry, K.entry, [2, 3], 1, ""],
+          [trade.result === "sl" ? "SL ✗" : "SL", trade.sl, K.sl, [], 2, pct(trade.sl)],
+          ...trade.tp.map((p, k) => [`TP${k + 1}${trade.hit[k] ? " ✓" : ""}`, p, trade.hit[k] ? K.hit : K.tp, trade.hit[k] ? [] : [5, 4], 1, pct(p)]),
+        ];
+        for (const [name, p, col, dash, w, extra] of rows) {
+          const y = Math.round(Y(p)) + 0.5;
+          ctx.strokeStyle = col; ctx.lineWidth = w; ctx.setLineDash(dash);
+          ctx.beginPath(); ctx.moveTo(xa, y); ctx.lineTo(xb, y); ctx.stroke(); ctx.setLineDash([]);
+          const text = mini ? name : `${name} ${nf2.format(p)}${extra}`;
+          const tw = ctx.measureText(text).width + 8, th = fs + 5, tx = Math.max(2, Math.min(xb - tw, plotW - tw - 2));
+          ctx.fillStyle = col; ctx.fillRect(tx, y - th / 2, tw, th);
+          ctx.fillStyle = K.tagText; ctx.fillText(text, tx + 4, y + 0.5);
+        }
+      }
+      ctx.restore();
+    }
 
     axisW() { return this.mini ? 46 : 64; }
     plotW() { return this.cv.clientWidth - this.axisW(); }
@@ -494,6 +589,8 @@
           for (let j = i0; j <= jEnd; j++) {
             for (const v of [this.ich.cloudA[j], this.ich.cloudB[j]]) if (v != null) { lo = Math.min(lo, v); hi = Math.max(hi, v); }
           }
+          const t = this.ich.trade;       // the tracked setup: stop and targets stay in view
+          if (t && t.i <= i1) for (const v of [t.sl, ...t.tp]) { lo = Math.min(lo, v); hi = Math.max(hi, v); }
         }
         for (const lv of this.levels) if (lv.price > lo * 0.92 && lv.price < hi * 1.08) { lo = Math.min(lo, lv.price); hi = Math.max(hi, lv.price); }
         const L = this.fwd(lo), Hh = this.fwd(hi), pad = (Hh - L) * 0.07 || Math.abs(Hh) * 0.05;
@@ -551,33 +648,30 @@
         ctx.setLineDash([]);
         baseMarks.push({ b, x0, x1, yT });
       }
+      const K = this.ich ? ichColors() : null;
       if (this.ich) {
-        const { tenkan, kijun, cloudA, cloudB, chikou } = this.ich;
+        const { tenkan, kijun, cloudA, cloudB, chikou, zones } = this.ich;
         const j0 = Math.max(1, i0), j1 = Math.min(cloudA.length - 1, Math.ceil(this.end) + 1);
         // cloud fill: green where Senkou A is above Senkou B, red where it is below
         ctx.globalAlpha = mini ? 0.16 : 0.14;
         for (let j = j0; j <= j1; j++) {
           const a0 = cloudA[j - 1], b0 = cloudB[j - 1], a1 = cloudA[j], b1 = cloudB[j];
           if (a0 == null || b0 == null || a1 == null || b1 == null) continue;
-          ctx.fillStyle = a0 + a1 >= b0 + b1 ? up : down;
+          ctx.fillStyle = a0 + a1 >= b0 + b1 ? K.bull : K.bear;
           ctx.beginPath();
           ctx.moveTo(X(j - 1), Y(a0)); ctx.lineTo(X(j), Y(a1)); ctx.lineTo(X(j), Y(b1)); ctx.lineTo(X(j - 1), Y(b0));
           ctx.closePath(); ctx.fill();
         }
-        ctx.globalAlpha = 0.75;
-        for (const [arr, col] of [[cloudA, up], [cloudB, down]]) {
-          ctx.strokeStyle = col; ctx.lineWidth = 1; ctx.beginPath();
-          let on = false;
-          for (let j = j0 - 1; j <= j1; j++) {
-            const v = arr[j];
-            if (v == null) { on = false; continue; }
-            on ? ctx.lineTo(X(j), Y(v)) : ctx.moveTo(X(j), Y(v)); on = true;
-          }
-          ctx.stroke();
+        // Kijun support/resistance zones: where the Kijun sat flat
+        for (const z of zones) {
+          if (z.i1 < i0 || z.i0 > i1 + 12) continue;
+          const x0 = X(z.i0), x1 = X(z.i1), yT = Y(z.p + z.b), yB = Y(z.p - z.b);
+          ctx.fillStyle = K.kijun; ctx.globalAlpha = 0.12; ctx.fillRect(x0, yT, x1 - x0, Math.max(2, yB - yT));
+          ctx.strokeStyle = K.kijun; ctx.globalAlpha = 0.45; ctx.lineWidth = 1; ctx.strokeRect(x0, yT, x1 - x0, Math.max(2, yB - yT));
         }
         ctx.globalAlpha = 1;
-        line(chikou, css("--chikou"), Y, mini ? 1 : 1.1);
-        line(kijun, css("--kijun"), Y, lw); line(tenkan, css("--tenkan"), Y, lw);
+        line(chikou, K.chikou, Y, mini ? 1 : 1.1);
+        line(kijun, K.kijun, Y, lw); line(tenkan, K.tenkan, Y, lw);
       } else {
         line(c.sma200, css("--sma200"), Y, lw); line(c.sma150, css("--sma150"), Y, lw); line(c.sma50, css("--sma50"), Y, lw);
         if (this.showSma10) line(c.sma10, css("--sma10"), Y, lw);
@@ -618,6 +712,8 @@
           b.sq ? ctx.stroke() : ctx.fill();
         }
       }
+
+      if (this.ich) this.drawIchimokuMarks(ctx, K, { X, Y, i0, i1, n, plotW, step, mini });
 
       // key levels: merge near-equal prices, stagger labels
       const merged = [];
@@ -1125,6 +1221,14 @@
     renderFund(c, row);
     const murphy = state.screen === "Murphy";
     const ich = state.screen === "Ichimoku";
+    const info = ich && c.ich ? c.ich : null;
+    $("ichInfo").hidden = !info;
+    if (info) {
+      const st = info.stats || {}, rate = (k) => (st.closed ? Math.round((st[k] / st.closed) * 100) + "%" : "–");
+      $("ichInfo").innerHTML = `<b>Trend</b> ${info.trend} · <b>Momentum</b> ${info.momentum} · <b>Score</b> ${info.score}%` +
+        (st.closed ? ` · <b>Past setups on this stock</b> ${st.closed} closed, ${rate("tp1")} reached target 1, ${rate("sl")} stopped out, average ${st.avg_r >= 0 ? "+" : ""}${st.avg_r}R. ` +
+          `That count assumes a third is sold at each target and takes the stop first when one bar touches both. It is not a backtest.` : "");
+    }
     $("sma10Legend").hidden = !(murphy && c.sma10);
     for (const el of document.querySelectorAll(".legend .k-ma")) el.hidden = ich;
     for (const el of document.querySelectorAll(".legend .k-ich")) el.hidden = !ich;
@@ -1135,7 +1239,7 @@
   function chartOptions() {
     const s = state.screen, lv = SCREEN_LEVEL[s];
     return { sma10: s === "Murphy", ichimoku: s === "Ichimoku", levels: lv ? [lv] : [],
-             bases: s === "Base Breakout" || state.showBases };
+             bases: s !== "Ichimoku" && (s === "Base Breakout" || state.showBases) };
   }
   function setBases(on) {
     state.showBases = on;
@@ -1192,7 +1296,7 @@
       case "Blue Sky": return r.ath != null ? `All-time high ₹${nf2.format(r.ath)} (${signed(r.pct_from_ath)}%)` : "";
       case "Murphy": return r.murphy_signal ? `${r.murphy_signal}, ${r.murphy_days_ago === 0 ? "today" : r.murphy_days_ago + "d ago"}, entry ₹${nf2.format(r.murphy_entry)}` : "";
       case "Base Breakout": return r.base_pivot != null ? `${r.base_state}, B${r.base_no}, pivot ₹${nf2.format(r.base_pivot)} (${signed(r.base_pct_from_pivot)}%), ${r.base_weeks}w${r.base_tags ? ", " + r.base_tags : ""}` : "";
-      case "Ichimoku": return r.ich_cloud_top != null ? `Cloud breakout ${r.ich_days_ago === 0 ? "today" : r.ich_days_ago + "d ago"}, cloud top ₹${nf2.format(r.ich_cloud_top)} (${signed(r.ich_pct_above_cloud)}%)` : "";
+      case "Ichimoku": return r.ich_signal ? `${r.ich_signal} ${r.ich_days_ago === 0 ? "today" : r.ich_days_ago + "d ago"}, score ${r.ich_score}, stop ₹${nf2.format(r.ich_sl)}` : "";
       case "Multi-Year Base": return r.myb_pivot != null ? `Old high ₹${nf2.format(r.myb_pivot)} held ${r.myb_base_years} years` : "";
       case "IPO Base": return r.ipo_high != null ? `Listing high ₹${nf2.format(r.ipo_high)} (${signed(r.ipo_pct_from_high)}%)` : "";
       default: return "";

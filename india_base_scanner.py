@@ -376,20 +376,26 @@ class ScanConfig:
     base_min_mcap_cr: float = 2000.0      # market cap, ₹ crore (needs fundamentals; see apply_market_cap_filter)
     base_signal_days: int = 5             # a breakout is "fresh" for N sessions
     base_climb_days: int = 60             # after that it is "climbing" for up to N sessions
-    base_played_out_pct: float = 25.0     # % above the pivot at which the move is "played out"
     base_squat_pct: float = 40.0          # breakout closing in the lower N% of its bar = squat
     base_history_bars: int = 1260         # bars of history the base count is built from (~5 years)
 
     # --- Ichimoku cloud breakout ---
+    ich_mode: str = "adaptive"            # "adaptive" (periods follow volatility) or "classic"
     ich_tenkan: int = 9
     ich_kijun: int = 26
     ich_senkou_b: int = 52
     ich_displacement: int = 26
-    ich_signal_days: int = 5              # list breakouts from the last N sessions
-    ich_lookback: int = 10                # bars before the breakout that are checked
-    ich_min_bars_not_above: int = 8       # of those, how many must have closed in or below the cloud
-    ich_require_tk: bool = True           # Tenkan above Kijun
-    ich_require_chikou: bool = True       # close above the close 26 bars ago
+    ich_adapt_len: int = 50               # bars of ATR history the adaptive periods are scaled against
+    ich_adapt_strength: float = 0.4       # how far a period may stretch or shrink (0.4 = 40%)
+    ich_min_score: float = 50.0           # confluence score a TK cross needs
+    ich_break_vol_mult: float = 1.3       # cloud breakout: volume vs its 20-bar average
+    ich_sl_atr: float = 0.5               # stop: this many ATR beyond the Kijun
+    ich_tp_r: Tuple[float, float, float] = (1.5, 2.5, 4.0)   # targets, as multiples of the risk
+    ich_div_len: int = 5                  # bars each side of a pivot (momentum divergence)
+    ich_div_max_bars: int = 60            # pivots further apart than this are not compared
+    ich_signal_days: int = 5              # list signals from the last N sessions
+    ich_show_closed_bars: int = 20        # keep a closed setup on the chart this long
+    ich_bars: int = 700                   # history analysed (the first ~100 bars are warm-up)
 
     # --- Shared ---
     breakout_window: int = 5              # bars in which a breakout counts as "recent"
@@ -531,8 +537,8 @@ def _walk_bases(df: pd.DataFrame, cfg: ScanConfig) -> Tuple[dict, List[dict]]:
       ``base_max_below_pivot`` of its pivot.
     * **Climbing**: broke out up to ``base_climb_days`` sessions ago and has not
       closed back below the pivot since.
-    * **Played out**: broke out in that window but has since closed below the
-      pivot, or is more than ``base_played_out_pct`` above it.
+    * **Played out**: broke out in that window but the breakout failed: price
+      has since closed back below the pivot, straight away or weeks later.
     """
     out = {"base_bo": False, "base_state": "", "base_no": 0, "base_pivot": np.nan,
            "base_pct_from_pivot": np.nan, "base_weeks": np.nan, "base_depth": np.nan,
@@ -623,7 +629,7 @@ def _walk_bases(df: pd.DataFrame, cfg: ScanConfig) -> Tuple[dict, List[dict]]:
     elif forming is not None and (close / peak - 1) * 100 >= -cfg.base_max_below_pivot:
         fill(forming, "Forming")
     elif last is not None and ago <= cfg.base_climb_days:
-        fill(last, "Climbing" if held and gain <= cfg.base_played_out_pct else "Played out", int(ago))
+        fill(last, "Climbing" if held else "Played out", int(ago))
     elif forming is not None:                    # a base, but too far under its pivot to list
         fill(forming, "Forming")
         out["base_bo"] = False
@@ -654,57 +660,295 @@ def base_boxes(df: pd.DataFrame, cfg: ScanConfig, since=None) -> List[dict]:
     return boxes
 
 
-def find_ichimoku(df: pd.DataFrame, cfg: ScanConfig) -> dict:
-    """Ichimoku cloud breakout: a close up through the top of the cloud.
+ICH_BULL_KINDS = ("long", "break_up", "retest_up")
+ICH_BEAR_KINDS = ("short", "break_down", "retest_down")
+ICH_SIGNAL_NAMES = {"long": "TK cross", "break_up": "Cloud breakout", "retest_up": "Cloud retest"}
 
-    The cloud under each bar is the Senkou A / B pair calculated
-    ``ich_displacement - 1`` bars earlier, as charting platforms draw it. The
-    breakout bar is the latest close above the cloud top after a close at or
-    below it. It counts when it happened in the last ``ich_signal_days``
-    sessions, every close since has stayed above the cloud, and at least
-    ``ich_min_bars_not_above`` of the ``ich_lookback`` bars before it closed in
-    or below the cloud (a real breakout, not a dip of a stock already above).
-    Optional confirmations: Tenkan above Kijun, and the close above the close
-    26 bars ago (the Chikou span clear of price).
+
+def _ichimoku_engine(df: pd.DataFrame, cfg: ScanConfig) -> Optional[dict]:
+    """Adaptive Ichimoku with scored signals and a tracked TP/SL setup.
+
+    The rules follow the "Adaptive Ichimoku Nexus" TradingView indicator by
+    WillyAlgoTrader, at its default settings:
+
+    * **Adaptive periods.** Tenkan, Kijun and Senkou B use Donchian midpoints
+      whose length stretches or shrinks by up to ``ich_adapt_strength`` with
+      where ATR(14) sits in its ``ich_adapt_len``-bar range: shorter when
+      volatility is high, longer when it is low. ``ich_mode = "classic"``
+      keeps the lengths fixed.
+    * **Confluence score (0-100)** from eight factors: price against the cloud,
+      Tenkan against Kijun, the Chikou span, the direction of the cloud ahead,
+      cloud thickness, volume, momentum and momentum acceleration.
+    * **Signals**, all on closed bars: a Tenkan/Kijun cross that passes the
+      cloud-thickness, volume and Chikou filters and scores ``ich_min_score``
+      or more ("long" / "short"); a close through the cloud on volume of
+      ``ich_break_vol_mult`` times its 20-bar average ("break_up" /
+      "break_down"); and a retest of the cloud edge within 10 bars of a
+      breakout ("retest_up" / "retest_down"). Cloud twists and momentum
+      divergences are recorded as information only.
+    * **Trade record.** Every signal sets an entry, a stop under the Kijun
+      (plus ``ich_sl_atr`` ATR, falling back to 2 ATR if that lands on the
+      wrong side) and three targets at ``ich_tp_r`` multiples of the risk. A
+      new signal replaces the open setup. A bar that touches both the stop and
+      a target counts as the stop.
+
+    Only the last ``ich_bars`` bars are analysed; the first part of that window
+    is warm-up. Returns None when there is too little history.
     """
-    out = {"ichimoku": False, "ich_days_ago": np.nan, "ich_cloud_top": np.nan,
-           "ich_pct_above_cloud": np.nan, "ich_tk_bullish": False,
-           "ich_chikou_ok": False, "ich_future_cloud": "", "ich_from": ""}
-    n = len(df)
-    disp = cfg.ich_displacement
-    if n < cfg.ich_senkou_b + disp + cfg.ich_lookback + cfg.ich_signal_days:
-        return out
-    h, l, c = df["High"], df["Low"], df["Close"]
-    mid = lambda k: (h.rolling(k).max() + l.rolling(k).min()) / 2  # noqa: E731
-    tenkan, kijun = mid(cfg.ich_tenkan), mid(cfg.ich_kijun)
-    span_a, span_b = (tenkan + kijun) / 2, mid(cfg.ich_senkou_b)
-    top = np.maximum(span_a.shift(disp - 1), span_b.shift(disp - 1)).to_numpy(float)
-    bot = np.minimum(span_a.shift(disp - 1), span_b.shift(disp - 1)).to_numpy(float)
-    cv = c.to_numpy(float)
-    above = cv > top                               # False where the cloud is not known yet
+    w = df.iloc[-cfg.ich_bars:]
+    n = len(w)
+    disp, d_off = cfg.ich_displacement, cfg.ich_displacement - 1
+    adaptive = cfg.ich_mode == "adaptive"
+    stretch = cfg.ich_adapt_strength if adaptive else 0.0
+    warm = max(int(round(cfg.ich_senkou_b * (1 + stretch))) + disp, 80)
+    if n < warm + 30:
+        return None
+    h = w["High"].to_numpy(float)
+    l = w["Low"].to_numpy(float)
+    c = w["Close"].to_numpy(float)
+    v = np.nan_to_num(w["Volume"].to_numpy(float))
 
-    close = cv[-1]
-    out.update(ich_cloud_top=round(float(top[-1]), 2) if top[-1] == top[-1] else np.nan,
-               ich_tk_bullish=bool(tenkan.iloc[-1] > kijun.iloc[-1]),
-               ich_chikou_ok=bool(close > cv[-1 - disp]),
-               ich_future_cloud="Bullish" if span_a.iloc[-1] > span_b.iloc[-1] else "Bearish")
-    if not above[-1]:
+    # ATR(14), Wilder smoothing
+    pc = np.r_[c[0], c[:-1]]
+    tr = np.maximum(h - l, np.maximum(np.abs(h - pc), np.abs(l - pc)))
+    atr = np.zeros(n)
+    atr[13] = tr[:14].mean()
+    for i in range(14, n):
+        atr[i] = (atr[i - 1] * 13 + tr[i]) / 14
+    atr_s = pd.Series(atr)
+    atr_hi = atr_s.rolling(cfg.ich_adapt_len).max().fillna(atr_s).to_numpy()
+    atr_lo = atr_s.rolling(cfg.ich_adapt_len).min().fillna(0.0).to_numpy()
+    rng = atr_hi - atr_lo
+    vol_ratio = np.where(rng > 0, np.clip((atr - atr_lo) / np.where(rng > 0, rng, 1), 0, 1), 0.5)
+
+    def donchian(base: int) -> np.ndarray:
+        lo_p = max(int(round(base * (1 - stretch))), 3)
+        hi_p = int(round(base * (1 + stretch)))
+        out = np.empty(n)
+        for i in range(n):
+            p = base if not adaptive else min(max(int(round(base * (1 + stretch * (1 - 2 * vol_ratio[i])))), lo_p), hi_p)
+            out[i] = (h[i - p + 1:i + 1].max() + l[i - p + 1:i + 1].min()) / 2 if i >= p - 1 else (h[i] + l[i]) / 2
         return out
-    out["ich_pct_above_cloud"] = round(float(close / top[-1] - 1) * 100, 2)
+
+    tenkan, kijun, span_b = donchian(cfg.ich_tenkan), donchian(cfg.ich_kijun), donchian(cfg.ich_senkou_b)
+    span_a = (tenkan + kijun) / 2
+
+    def lag(a: np.ndarray, k: int) -> np.ndarray:      # a[i - k], or a[i] where there is no such bar
+        out = a.copy()
+        out[k:] = a[:-k]
+        return out
+
+    kumo_a, kumo_b = lag(span_a, d_off), lag(span_b, d_off)      # the cloud under each bar
+    top, bot = np.maximum(kumo_a, kumo_b), np.minimum(kumo_a, kumo_b)
+    thick = top - bot
+    thin = thick < pd.Series(thick).rolling(50).mean().fillna(pd.Series(thick)).to_numpy() * 0.3
+    above, below = c > top, c < bot
+    tk_bull, tk_bear = tenkan > kijun, tenkan < kijun
+    chikou_bull, chikou_bear = c > lag(c, disp), c < lag(c, disp)
+    vol_sma = pd.Series(v).rolling(20).mean().fillna(0.0).to_numpy()
+    has_vol = v > 0
+    vol_ok = np.where(has_vol, v > vol_sma * 1.2, True)
+    vol_strong = np.where(has_vol, v > vol_sma * cfg.ich_break_vol_mult, True)
+
+    # momentum pulse, -100..100: Tenkan-Kijun spread, its acceleration, and the slope of the cloud ahead
+    safe_atr = np.where(atr > 0, atr, 1.0)
+    spread = np.where(atr > 0, (tenkan - kijun) / safe_atr, 0.0)
+    slope = np.where(atr > 0, ((span_a - lag(span_a, 5)) - (span_b - lag(span_b, 5))) / safe_atr, 0.0)
+    pulse = np.clip(spread * 40 + (spread - lag(spread, 3)) * 100 + slope * 30, -100, 100)
+    mom = pd.Series(pulse).ewm(span=5, adjust=False).mean().to_numpy()
+    mom_prev = lag(mom, 1)
+    future_bull = (span_a - lag(span_a, 3)) > (span_b - lag(span_b, 3))
+
+    def score(i: int, bull: bool) -> float:
+        s = (20.0 if (above[i] if bull else below[i]) else 8.0 if not (above[i] or below[i]) else 0.0)
+        s += 15.0 if (tk_bull[i] if bull else tk_bear[i]) else 0.0
+        s += 15.0 if (chikou_bull[i] if bull else chikou_bear[i]) else 0.0
+        s += 10.0 if future_bull[i] == bull else 0.0
+        s += 2.0 if thin[i] else 8.0
+        s += 10.0 if vol_ok[i] else 0.0
+        m = mom[i] if bull else -mom[i]
+        s += 12.0 if m > 20 else 6.0 if m > 0 else 0.0
+        rising = (mom[i] > mom_prev[i] and mom[i] > 0) if bull else (mom[i] < mom_prev[i] and mom[i] < 0)
+        s += 10.0 if rising else 0.0
+        return min(s, 100.0)
+
+    events: List[dict] = []
+    zones: List[dict] = []
+    trade = None                 # the setup being tracked, or the last one closed
+    stats = {"closed": 0, "tp1": 0, "tp2": 0, "tp3": 0, "sl": 0, "r_sum": 0.0}
+    tp_r = cfg.ich_tp_r
+    last_up = last_down = -100
+    piv = cfg.ich_div_len
+    last_ph = last_pl = None     # (price, momentum, bar) of the previous pivot high / low
+
+    def close_trade(t: dict, i: int, r_rest: float, how: str) -> None:
+        r = ((tp_r[0] if t["tp1_hit"] else r_rest) + (tp_r[1] if t["tp2_hit"] else r_rest)
+             + (tp_r[2] if how == "tp3" else r_rest)) / 3
+        stats["closed"] += 1
+        stats["r_sum"] += r
+        stats["tp1"] += int(t["tp1_hit"])
+        stats["tp2"] += int(t["tp2_hit"])
+        stats["tp3"] += int(how == "tp3")
+        stats["sl"] += int(how == "sl")
+        t.update(open=False, close_i=i, result=how)
+
+    def open_trade(i: int, long: bool) -> dict:
+        entry, buf = c[i], atr[i] * cfg.ich_sl_atr
+        sl = kijun[i] - buf if long else kijun[i] + buf
+        if (sl >= entry) if long else (sl <= entry):          # stop on the wrong side: use an ATR stop
+            sl = entry - atr[i] * 2 if long else entry + atr[i] * 2
+        risk = max(abs(entry - sl), atr[i] * 0.5)
+        sign = 1 if long else -1
+        return {"dir": sign, "i": i, "entry": entry, "sl": sl, "risk": risk, "open": True,
+                "tp": [entry + sign * risk * m for m in tp_r],
+                "tp1_hit": False, "tp2_hit": False, "tp3_hit": False, "close_i": None, "result": ""}
+
+    for i in range(warm, n):
+        buy = (tk_bull[i] and not tk_bull[i - 1] and tenkan[i - 1] <= kijun[i - 1] and not thin[i]
+               and vol_ok[i] and chikou_bull[i] and score(i, True) >= cfg.ich_min_score)
+        sell = (tk_bear[i] and not tk_bear[i - 1] and tenkan[i - 1] >= kijun[i - 1] and not thin[i]
+                and vol_ok[i] and chikou_bear[i] and score(i, False) >= cfg.ich_min_score)
+        brk_up = bool(above[i] and c[i - 1] <= top[i - 1] and vol_strong[i])
+        brk_dn = bool(below[i] and c[i - 1] >= bot[i - 1] and vol_strong[i])
+        if brk_up:
+            last_up = i
+        if brk_dn:
+            last_down = i
+        ret_up = bool(1 < i - last_up <= 10 and l[i] <= top[i] and c[i] > top[i])
+        ret_dn = bool(1 < i - last_down <= 10 and h[i] >= bot[i] and c[i] < bot[i])
+        if buy:
+            events.append({"i": i, "k": "long", "score": int(round(score(i, True)))})
+        if sell:
+            events.append({"i": i, "k": "short", "score": int(round(score(i, False)))})
+        for on, kind in ((brk_up, "break_up"), (brk_dn, "break_down"), (ret_up, "retest_up"), (ret_dn, "retest_down")):
+            if on:
+                events.append({"i": i, "k": kind})
+        # cloud twist: Senkou A crossing Senkou B (the cloud 25 bars ahead changes colour)
+        if span_a[i] > span_b[i] and span_a[i - 1] <= span_b[i - 1]:
+            events.append({"i": i, "k": "twist_up"})
+        elif span_a[i] < span_b[i] and span_a[i - 1] >= span_b[i - 1]:
+            events.append({"i": i, "k": "twist_down"})
+        # momentum divergence at confirmed price pivots (known `piv` bars after the pivot)
+        j = i - piv
+        if j - piv >= 0:
+            if h[j] == h[j - piv:i + 1].max() and (h[j - piv:i + 1] == h[j]).sum() == 1:
+                if last_ph and i - last_ph[2] <= cfg.ich_div_max_bars and h[j] > last_ph[0] and mom[j] < last_ph[1]:
+                    events.append({"i": j, "k": "div_down"})
+                last_ph = (h[j], mom[j], i)
+            if l[j] == l[j - piv:i + 1].min() and (l[j - piv:i + 1] == l[j]).sum() == 1:
+                if last_pl and i - last_pl[2] <= cfg.ich_div_max_bars and l[j] < last_pl[0] and mom[j] > last_pl[1]:
+                    events.append({"i": j, "k": "div_up"})
+                last_pl = (l[j], mom[j], i)
+        # a Kijun that was flat for four bars and has just moved leaves a support/resistance zone
+        flat_now = all(abs(kijun[i] - kijun[i - k]) <= 0.01 for k in (1, 2, 3))
+        flat_before = all(abs(kijun[i - 1] - kijun[i - 1 - k]) <= 0.01 for k in (1, 2, 3))
+        if flat_before and not flat_now:
+            zones.append({"i0": i - 5, "i1": i + 10, "p": kijun[i - 1], "band": atr[i] * 0.15})
+
+        any_buy, any_sell = buy or brk_up or ret_up, sell or brk_dn or ret_dn
+        opened = False
+        if any_buy or any_sell:                  # a new signal replaces the open setup (buy wins a tie)
+            if trade and trade["open"]:
+                mk = trade["dir"] * (c[i] - trade["entry"]) / max(trade["risk"], 1e-9)
+                close_trade(trade, i, mk, "replaced")
+            trade = open_trade(i, bool(any_buy))
+            opened = True
+        if trade and trade["open"] and not opened and i > trade["i"]:
+            d = trade["dir"]
+            hit = (lambda p: l[i] <= p) if d == 1 else (lambda p: h[i] >= p)       # stop side
+            reach = (lambda p: h[i] >= p) if d == 1 else (lambda p: l[i] <= p)     # target side
+            if hit(trade["sl"]):                 # worst case first: stop before targets on the same bar
+                close_trade(trade, i, -1.0, "sl")
+            else:
+                trade["tp1_hit"] = trade["tp1_hit"] or reach(trade["tp"][0])
+                trade["tp2_hit"] = trade["tp2_hit"] or reach(trade["tp"][1])
+                if reach(trade["tp"][2]):
+                    trade["tp3_hit"] = True
+                    close_trade(trade, i, 0.0, "tp3")
+
     i = n - 1
-    while i > 0 and above[i - 1]:                  # walk back to the breakout bar
-        i -= 1
-    days_ago = n - 1 - i
-    if i < cfg.ich_lookback or days_ago > cfg.ich_signal_days or np.isnan(top[i - 1]):
+    trend = "Bullish" if above[i] and tk_bull[i] else "Bearish" if below[i] and tk_bear[i] else "Neutral"
+    if mom[i] > 0:
+        momentum = "Accelerating" if mom[i] > mom_prev[i] else "Fading"
+    elif mom[i] < 0:
+        momentum = "Falling" if mom[i] < mom_prev[i] else "Recovering"
+    else:
+        momentum = "Neutral"
+    cloud = "Thin" if thin[i] else "Above" if above[i] else "Below" if below[i] else "Inside"
+    return {"index": w.index, "n": n, "shift": d_off, "tenkan": tenkan, "kijun": kijun,
+            "span_a": span_a, "span_b": span_b, "events": events, "zones": zones, "trade": trade,
+            "stats": stats, "trend": trend, "momentum": momentum, "momentum_value": float(mom[i]),
+            "cloud": cloud, "score": max(score(i, True), score(i, False))}
+
+
+def find_ichimoku(df: pd.DataFrame, cfg: ScanConfig) -> dict:
+    """Latest bullish Ichimoku signal, if it is recent and nothing bearish followed it.
+
+    Listed when a bullish signal (TK cross, cloud breakout or cloud retest; see
+    ``_ichimoku_engine``) fired in the last ``ich_signal_days`` sessions, no
+    bearish signal has fired since, and the setup it opened has not been
+    stopped out.
+    """
+    out = {"ichimoku": False, "ich_signal": "", "ich_days_ago": np.nan, "ich_score": np.nan,
+           "ich_trend": "", "ich_momentum": "", "ich_cloud": "", "ich_entry": np.nan,
+           "ich_sl": np.nan, "ich_tp1": np.nan}
+    e = _ichimoku_engine(df, cfg)
+    if e is None:
         return out
-    before = ~above[i - cfg.ich_lookback:i]
-    out["ich_days_ago"] = int(days_ago)
-    out["ich_from"] = "Below cloud" if cv[i - 1] < bot[i - 1] else "Inside cloud"
+    out.update(ich_score=int(round(e["score"])), ich_trend=e["trend"], ich_momentum=e["momentum"],
+               ich_cloud=e["cloud"])
+    bulls = [x for x in e["events"] if x["k"] in ICH_BULL_KINDS]
+    bears = [x for x in e["events"] if x["k"] in ICH_BEAR_KINDS]
+    if not bulls:
+        return out
+    sig = bulls[-1]
+    # several bullish signals on the same bar: name the strongest (TK cross, then breakout, then retest)
+    same = [x for x in bulls if x["i"] == sig["i"]]
+    sig = min(same, key=lambda x: ICH_BULL_KINDS.index(x["k"]))
+    ago = e["n"] - 1 - sig["i"]
+    t = e["trade"]
+    out.update(ich_signal=ICH_SIGNAL_NAMES[sig["k"]], ich_days_ago=int(ago))
+    if "score" in sig:
+        out["ich_score"] = sig["score"]
+    if t and t["dir"] == 1:
+        out.update(ich_entry=round(float(t["entry"]), 2), ich_sl=round(float(t["sl"]), 2),
+                   ich_tp1=round(float(t["tp"][0]), 2))
     out["ichimoku"] = bool(
-        before.sum() >= cfg.ich_min_bars_not_above
-        and (not cfg.ich_require_tk or out["ich_tk_bullish"])
-        and (not cfg.ich_require_chikou or out["ich_chikou_ok"])
+        ago <= cfg.ich_signal_days
+        and (not bears or bears[-1]["i"] < sig["i"])
+        and t is not None and t["dir"] == 1 and t["result"] != "sl"
     )
+    return out
+
+
+def ichimoku_chart(df: pd.DataFrame, cfg: ScanConfig, bars: int) -> Optional[dict]:
+    """Everything a chart needs to draw the Ichimoku view for the last ``bars`` bars:
+    the lines, the signals, the support/resistance zones and the tracked setup."""
+    e = _ichimoku_engine(df, cfg)
+    if e is None:
+        return None
+    n = e["n"]
+    k = min(bars, n)
+    off = n - k                                   # engine index -> chart index
+    idx = e["index"]
+    day = lambda i: idx[min(max(i, 0), n - 1)].strftime("%Y-%m-%d")  # noqa: E731
+    r2 = lambda a: [round(float(x), 2) for x in a[off:]]            # noqa: E731
+    out = {"shift": e["shift"], "tenkan": r2(e["tenkan"]), "kijun": r2(e["kijun"]),
+           "spanA": r2(e["span_a"]), "spanB": r2(e["span_b"]),
+           "events": [{"d": day(x["i"]), "k": x["k"], **({"s": x["score"]} if "score" in x else {})}
+                      for x in e["events"] if x["i"] >= off],
+           "zones": [{"s": day(z["i0"]), "e": day(z["i1"]), "p": round(float(z["p"]), 2),
+                      "b": round(float(z["band"]), 2)} for z in e["zones"] if z["i1"] >= off],
+           "trend": e["trend"], "momentum": e["momentum"], "score": int(round(e["score"])),
+           "stats": {**{k2: v for k2, v in e["stats"].items() if k2 != "r_sum"},
+                     "avg_r": round(e["stats"]["r_sum"] / e["stats"]["closed"], 2) if e["stats"]["closed"] else None}}
+    t = e["trade"]
+    if t and t["i"] >= off and (t["open"] or n - 1 - t["close_i"] <= cfg.ich_show_closed_bars):
+        out["trade"] = {"d": day(t["i"]), "dir": t["dir"], "entry": round(float(t["entry"]), 2),
+                        "sl": round(float(t["sl"]), 2), "tp": [round(float(p), 2) for p in t["tp"]],
+                        "hit": [bool(t["tp1_hit"]), bool(t["tp2_hit"]), bool(t["tp3_hit"])],
+                        "open": bool(t["open"]), "result": t["result"],
+                        "end": day(t["close_i"]) if t["close_i"] is not None else None}
     return out
 
 
@@ -1002,9 +1246,9 @@ SCREEN_COLUMNS = {
                       "base_pivot", "base_pct_from_pivot", "base_weeks", "base_depth",
                       "base_tags", "base_days_ago", "vol_ratio", "rs_line_new_high",
                       "turnover_cr", "pct_from_52w_high", "pct_above_52w_low"],
-    "Ichimoku": ["symbol", "industry", "close", "rs_rating", "ich_days_ago", "ich_from",
-                 "ich_cloud_top", "ich_pct_above_cloud", "ich_tk_bullish", "ich_chikou_ok",
-                 "ich_future_cloud", "vol_ratio", "rs_line_new_high", "turnover_cr",
+    "Ichimoku": ["symbol", "industry", "close", "rs_rating", "ich_signal", "ich_days_ago",
+                 "ich_score", "ich_trend", "ich_momentum", "ich_cloud",
+                 "ich_entry", "ich_sl", "ich_tp1", "vol_ratio", "rs_line_new_high", "turnover_cr",
                  "pct_from_52w_high", "pct_above_52w_low"],
     "IPO Base": ["symbol", "industry", "close", "listed_days", "ipo_high",
                  "ipo_pct_from_high", "ipo_base_days", "ipo_depth", "vol_ratio",

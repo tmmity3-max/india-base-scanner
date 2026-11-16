@@ -164,9 +164,11 @@ def test_base_stages_after_breakout():
     # three weeks on, 12% above the pivot and never back under it: climbing
     out = ibs.find_base(_after_breakout((20, 225)), cfg)
     assert out["base_state"] == "Climbing" and out["base_bo"], out
-    # 35% above the pivot: the move is played out
-    assert ibs.find_base(_after_breakout((20, 270)), cfg)["base_state"] == "Played out"
-    # closed back under the pivot: the breakout failed
+    # 35% above the pivot and still holding: that is still climbing, not played out
+    assert ibs.find_base(_after_breakout((20, 270)), cfg)["base_state"] == "Climbing"
+    # held for a month, then closed back under the pivot: the breakout failed late
+    assert ibs.find_base(_after_breakout((20, 225), (15, 192)), cfg)["base_state"] == "Played out"
+    # closed back under the pivot within days: the breakout failed straight away
     out = ibs.find_base(_after_breakout((8, 190)), cfg)
     assert out["base_state"] == "Played out" and out["base_pct_from_pivot"] < 0, out
     # a breakout already more than 7% beyond the pivot is not "fresh"
@@ -201,25 +203,53 @@ def test_market_cap_filter():
 
 def ichimoku_stock():
     # Uptrend, a four-month drift lower that leaves price under the cloud, then
-    # a turn up through the cloud top over the last few sessions
-    return make_series([(0, 100), (250, 200), (30, 172), (90, 160), (8, 165), (4, 182)], noise=0.003, seed=7)
+    # a turn up through the cloud top over the last few sessions on heavy volume
+    wp = [(0, 100), (250, 200), (30, 172), (90, 160), (8, 165), (4, 182)]
+    n = 1 + sum(b for b, _ in wp[1:])
+    vol = np.full(n, 1_000_000.0)
+    vol[-5:] = 2_500_000
+    return make_series(wp, noise=0.003, seed=7, volume=vol)
 
 
-def test_ichimoku_breakout():
+def test_ichimoku_signal():
     out = ibs.find_ichimoku(ichimoku_stock(), ibs.ScanConfig())
     assert out["ichimoku"], out
-    assert out["ich_days_ago"] <= 5 and out["ich_pct_above_cloud"] > 0
-    assert out["ich_tk_bullish"] and out["ich_chikou_ok"]
+    assert out["ich_signal"] in ibs.ICH_SIGNAL_NAMES.values() and out["ich_days_ago"] <= 5
+    # the setup has its stop under the entry and its first target above it
+    assert out["ich_sl"] < out["ich_entry"] < out["ich_tp1"], out
 
 
-def test_ichimoku_not_when_already_above():
-    # a steady uptrend has been above the cloud for months: no fresh breakout
-    df = make_series([(0, 100), (400, 300)], noise=0.002, seed=8)
+def test_ichimoku_needs_volume():
+    # the same price path on flat volume: no cloud breakout, and the TK cross fails the volume filter
+    df = ichimoku_stock()
+    df["Volume"] = 1_000_000.0
     assert not ibs.find_ichimoku(df, ibs.ScanConfig())["ichimoku"]
+
+
+def test_ichimoku_no_lookahead():
+    # signals on past bars must not change when later bars arrive
+    df = ichimoku_stock()
+    cfg = ibs.ScanConfig(ich_bars=len(df))          # same window start for both runs
+    full = ibs._ichimoku_engine(df, cfg)
+    cut = ibs._ichimoku_engine(df.iloc[:-3], cfg)
+    last = len(df) - 4 - cfg.ich_div_len             # divergences are dated back to their pivot
+    key = lambda e: [(x["i"], x["k"]) for x in e["events"] if x["i"] <= last]  # noqa: E731
+    assert key(full) == key(cut)
 
 
 def test_ichimoku_not_in_downtrend():
     assert not ibs.find_ichimoku(downtrend_stock(), ibs.ScanConfig())["ichimoku"]
+
+
+def test_ichimoku_chart_payload():
+    df = ichimoku_stock()
+    p = ibs.ichimoku_chart(df, ibs.ScanConfig(), 200)
+    assert len(p["tenkan"]) == len(p["kijun"]) == len(p["spanA"]) == len(p["spanB"]) == 200
+    assert p["shift"] == 25 and any(e["k"] in ibs.ICH_BULL_KINDS for e in p["events"])
+    t = p["trade"]
+    assert t["dir"] == 1 and t["sl"] < t["entry"] < t["tp"][0] < t["tp"][1] < t["tp"][2]
+    import json
+    json.dumps(p)                                    # plain types only
 
 
 def test_indicators_in_range():

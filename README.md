@@ -22,7 +22,7 @@ Updated automatically after every market close: VCP, Blue Sky, Murphy trend-foll
 | **VCP** | Volatility Contraction Pattern: 2+ pullbacks, each tighter than the last, volume drying up, price within 6% of the pivot |
 | **Blue Sky** | At or breaking out to an **all-time high**, so there is no overhead supply |
 | **Base Breakout** | Numbered bases (B1, B2, …) with a pivot: 3+ weeks below a high with a 5–35% pullback. Lists bases forming and fresh breakouts within 7% of the pivot, RS ≥ 65, market cap above ₹2,000 crore |
-| **Ichimoku** | Cloud breakout: closed up through the top of the Ichimoku cloud in the last 5 sessions, with Tenkan above Kijun and the Chikou span clear of price |
+| **Ichimoku** | Adaptive Ichimoku: a scored Tenkan/Kijun cross, a cloud breakout on volume, or a cloud retest in the last 5 sessions, with an entry, stop and targets |
 | **Multi-Year Base** | Breaking out of a high that held for **2+ years** |
 | **IPO Base** | Recent listings basing just under their post-listing high |
 | **Murphy** | John Murphy's positional trend-following: above a rising 40-week SMA, then a fresh 10/50 crossover, 4-week-rule breakout, or crossover + 2-week breakout |
@@ -130,7 +130,7 @@ Close within `bluesky_max_below_ath` (3%) of the all-time high, at least 3 years
    - **Forming**: a base is in place and price is within `base_max_below_pivot` (7%) of the pivot.
    - **Fresh breakout**: closed above the pivot in the last `base_signal_days` (5) sessions, still above it and no more than `base_max_above_pivot` (7%) beyond it.
    - **Climbing**: broke out up to `base_climb_days` (60) sessions ago and has not closed back under the pivot.
-   - **Played out**: broke out in that time but has closed back under the pivot, or is more than `base_played_out_pct` (25%) above it.
+   - **Played out**: broke out in that time but the breakout failed: price has closed back under the pivot, whether straight away or weeks later.
 6. Filters: RS rating of `base_min_rs` (65) or more, and a market cap of at least `base_min_mcap_cr` (₹2,000 crore). Market cap comes from Yahoo Finance after the price scan (`apply_market_cap_filter`), so it applies on the website; in the notebook it applies only if you fetch fundamentals and call that function. A stock with no market cap from Yahoo is dropped.
 7. Tags: **Sky** (the pivot is an all-time high), **VCP** (the last third of the base is tight and 10-day volume is below the 50-day average; a looser test than the VCP screen), **Squat** (the breakout bar closed in the lower 40% of its range).
 
@@ -139,16 +139,20 @@ The same rules are in [`pine/base_breakout_pro.pine`](pine/base_breakout_pro.pin
 </details>
 
 <details>
-<summary><b>Ichimoku cloud breakout</b></summary>
+<summary><b>Ichimoku (adaptive)</b></summary>
 
-Standard settings: Tenkan 9, Kijun 26, Senkou B 52, displacement 26. The cloud under each bar is the one calculated 25 bars earlier, as charting platforms draw it.
+The rules follow the *Adaptive Ichimoku Nexus* TradingView indicator by WillyAlgoTrader, at its default settings, long side only for the list.
 
-1. The breakout bar is the latest close above the top of the cloud that followed a close at or below it.
-2. It must be within the last `ich_signal_days` (5) sessions, and every close since must have stayed above the cloud.
-3. At least `ich_min_bars_not_above` (8) of the `ich_lookback` (10) sessions before it closed in or below the cloud. This leaves out stocks that were already above the cloud and only dipped.
-4. Confirmations, both on by default: Tenkan above Kijun (`ich_require_tk`), and the close above the close 26 sessions ago, which is the Chikou span clear of price (`ich_require_chikou`).
+1. **Adaptive periods.** Tenkan 9, Kijun 26 and Senkou B 52 are Donchian midpoints whose length shrinks by up to 40% when ATR(14) is at the top of its 50-bar range and stretches by up to 40% at the bottom. Set `ich_mode="classic"` for fixed lengths.
+2. **Confluence score, 0–100**, from eight factors: price against the cloud, Tenkan against Kijun, the Chikou span, the direction of the cloud ahead, cloud thickness, volume, momentum and momentum acceleration.
+3. **Signals**, all on closed bars:
+   - **TK cross**: Tenkan crosses above Kijun, the cloud is not thin, volume is above 1.2 times its 20-day average, the Chikou span is above price, and the score is `ich_min_score` (50) or more.
+   - **Cloud breakout**: a close above the cloud after a close in or below it, on volume of `ich_break_vol_mult` (1.3) times the average.
+   - **Cloud retest**: within 10 sessions of a breakout, the low touches the cloud top and the close holds above it.
+4. **Listed** when a bullish signal fired in the last `ich_signal_days` (5) sessions, no bearish signal has fired since, and the setup has not been stopped out.
+5. **The setup**: entry at the signal close, a stop `ich_sl_atr` (0.5) ATR under the Kijun (2 ATR under the entry if that lands on the wrong side), and targets at 1.5, 2.5 and 4 times the risk. A new signal replaces the open setup.
 
-The table also shows whether the breakout came from inside or below the cloud, and whether the cloud ahead is bullish (Senkou A above Senkou B). Newest breakouts first.
+The chart also marks cloud twists, momentum divergences and flat-Kijun support/resistance zones. The "past setups" line under the chart counts earlier setups on that stock: a third sold at each target, the stop taken first when one bar touches both. It is a tally on the chart's history, not a backtest.
 
 </details>
 
