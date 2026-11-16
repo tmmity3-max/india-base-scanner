@@ -288,7 +288,10 @@ def main():
     heat_syms = sorted({s for m in members.values() for s in m["symbol"]})
     print(f"Fetching fundamentals for {len(set(matched) | set(heat_syms))} stocks...")
     fund = ibs.fetch_fundamentals(sorted(set(matched) | set(heat_syms)))
-    print(f"  got data for {sum(1 for v in fund.values() if v)} stocks")
+    asked, got = len(set(matched) | set(heat_syms)), sum(1 for v in fund.values() if v)
+    print(f"  got data for {got} stocks")
+    if got < 0.5 * asked:   # Yahoo rate limit: without market caps most stocks would be dropped
+        sys.exit(f"Fundamentals for only {got}/{asked} stocks - aborting so the site keeps the last good data.")
     ibs.apply_market_cap_filter(result, fund)      # every screen: market cap floor
 
     latest = write_site_data(result, data, args.out, args.universe, args.benchmark, fund)

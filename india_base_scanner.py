@@ -285,9 +285,12 @@ def fetch_fundamentals(symbols: Iterable[str], suffix: str = ".NS", workers: int
                 for k in ("roe", "revenue_growth", "earnings_growth", "profit_margin"):
                     if k in out and isinstance(out[k], (int, float)):
                         out[k] = round(out[k] * 100, 2)
-                dy = out.get("dividend_yield")
-                if isinstance(dy, (int, float)) and dy < 1:   # older yfinance gives a fraction
-                    out["dividend_yield"] = round(dy * 100, 2)
+                # Yahoo's dividendYield changed from a fraction to a percent between
+                # yfinance versions; dividend per share / price is right in both.
+                out.pop("dividend_yield", None)
+                rate, price = info.get("dividendRate"), info.get("currentPrice") or info.get("regularMarketPrice")
+                if isinstance(rate, (int, float)) and isinstance(price, (int, float)) and price > 0:
+                    out["dividend_yield"] = round(rate / price * 100, 2)
                 if isinstance(out.get("market_cap"), (int, float)):
                     out["market_cap_cr"] = round(out["market_cap"] / 1e7, 0)
                 return sym, out
