@@ -123,7 +123,7 @@
 
   const $ = (id) => document.getElementById(id);
   const state = { data: null, screen: "VCP", sort: null, dir: -1, query: "", symbol: null, view: "table", perRow: 2,
-                  stage: "All", filters: {}, showBases: true };
+                  stage: null, filters: {}, showBases: true };
   state.filters = loadFilters();
   try { state.showBases = localStorage.getItem("ibs-bases") !== "0"; } catch (e) { /* private window */ }
   const chartCache = new Map();
@@ -866,7 +866,7 @@
   function selectScreen(name, initial = false) {
     state.screen = name;
     state.sort = null;
-    state.stage = "All";
+    state.stage = defaultStage(name);
     for (const b of $("screens").children) b.setAttribute("aria-selected", b.dataset.screen === name ? "true" : "false");
     $("screenNote").textContent = SCREENS[name];
     $("pineGift").hidden = name !== "Murphy";
@@ -913,8 +913,7 @@
     box.hidden = !def;
     if (!def) return;
     const rows = screenRows(state.screen);
-    const cards = [["All", "every stock on this screen", rows.length]]
-      .concat(def.list.map(([name, note]) => [name, note, rows.filter((r) => def.of(r) === name).length]));
+    const cards = def.list.map(([name, note]) => [name, note, rows.filter((r) => def.of(r) === name).length]);
     for (const [name, note, n] of cards) {
       const b = document.createElement("button");
       b.type = "button"; b.className = "stage";
@@ -923,6 +922,14 @@
       b.addEventListener("click", () => selectStage(name));
       box.appendChild(b);
     }
+  }
+  // a screen opens on its first stage that has stocks
+  function defaultStage(screen) {
+    const def = STAGES[screen];
+    if (!def) return null;
+    const rows = screenRows(screen);
+    const hit = def.list.find(([name]) => rows.some((r) => def.of(r) === name));
+    return (hit || def.list[0])[0];
   }
   function selectStage(name) {
     state.stage = name;
@@ -972,7 +979,7 @@
   function currentRows() {
     let list = screenRows(state.screen);
     const def = STAGES[state.screen];
-    if (def && state.stage !== "All") list = list.filter((r) => def.of(r) === state.stage);
+    if (def && state.stage) list = list.filter((r) => def.of(r) === state.stage);
     if (state.query) list = list.filter((r) => (r.symbol + " " + (r.industry || "")).toLowerCase().includes(state.query));
     if (state.sort) {
       const k = state.sort, dir = state.dir;

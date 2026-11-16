@@ -7,7 +7,7 @@
 - New **Ichimoku** screen: closes up through the top of the cloud in the last 5 sessions, with Tenkan above Kijun and the Chikou span clear of price.
 - Website: the screen tabs are smaller and always fit on one row.
 - Base Breakout now has four stages: forming, fresh breakout, climbing (broke out up to 60 sessions ago and holding) and played out (back under the pivot, or 25%+ above it).
-- Website: every screen splits into stages you can click, and a Filters panel (RS, market cap, turnover, price, distance from the 52-week high, RS line at a high) applies to every screen.
+- Website: every screen splits into stages you can click (it opens on the first stage that has stocks), and a Filters panel (RS, market cap, turnover, price, distance from the 52-week high, RS line at a high) applies to every screen.
 - Website: charts draw each base as a shaded box with its pivot and a green breakout marker, and show only the key level of the screen you are on instead of every level at once. A "Bases" button turns the boxes on or off outside the Base Breakout screen.
 - Website: charts on the Ichimoku screen are drawn in Ichimoku style, with the cloud running ahead of price, Tenkan, Kijun and the Chikou span, in place of the SMAs.
 - New TradingView scripts: `pine/base_breakout_pro.pine` (the Base Breakout screen as an indicator, with a volume pane) and `pine/rs_line.pine` (RS line pane).
