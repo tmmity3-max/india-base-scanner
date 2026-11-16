@@ -3,7 +3,7 @@
 Runs the scanner and writes static JSON that the website in ``web/`` reads:
 
     <out>/latest.json          screens, counts, settings, scan date
-    <out>/charts/<SYMBOL>.json about 5 years of candles for every match
+    <out>/charts/<SYMBOL>.json about 2 years of candles for every match
 
 GitHub Actions runs this after market close and force-pushes <out> to the
 ``data`` branch (see .github/workflows/daily-scan.yml), so ``main`` never
@@ -99,7 +99,6 @@ def chart_payload(sym: str, df: pd.DataFrame, result: ibs.ScanResult, fund: dict
     hi52 = float(full["High"].tail(252).max()); lo52 = float(full["Low"].tail(252).min())
     payload["hi52"], payload["lo52"] = _clean(hi52), _clean(lo52)
     payload["fund"] = {k: _clean(v) for k, v in fund.get(sym, {}).items()} if fund else {}
-    payload["stats"] = ibs.chart_stats(full)
     return payload
 
 
@@ -289,17 +288,8 @@ def main():
     heat_syms = sorted({s for m in members.values() for s in m["symbol"]})
     print(f"Fetching fundamentals for {len(set(matched) | set(heat_syms))} stocks...")
     fund = ibs.fetch_fundamentals(sorted(set(matched) | set(heat_syms)))
-    asked, got = len(set(matched) | set(heat_syms)), sum(1 for v in fund.values() if v)
-    print(f"  got data for {got} stocks")
-    if got < 0.5 * asked:
-        # Yahoo is rate-limiting us. Without market caps the market-cap filter
-        # would drop most stocks, so keep yesterday's data instead.
-        sys.exit(f"Fundamentals for only {got}/{asked} stocks (Yahoo rate limit?) - aborting so the site keeps the last good data.")
+    print(f"  got data for {sum(1 for v in fund.values() if v)} stocks")
     ibs.apply_market_cap_filter(result, fund)      # every screen: market cap floor
-    charted = sorted({s for t in result.screens.values() if not t.empty for s in t["symbol"]})
-    print(f"Fetching quarterly results for {len(charted)} charted stocks...")
-    for sym, rows in ibs.fetch_quarterly(charted).items():
-        fund.setdefault(sym, {})["quarters"] = rows
 
     latest = write_site_data(result, data, args.out, args.universe, args.benchmark, fund)
     write_heatmap(data, fund, args.out, members)

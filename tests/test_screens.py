@@ -315,40 +315,6 @@ def test_full_scan_and_excel(tmp_path=None):
     os.remove(path)
 
 
-def test_dividend_yield_and_free_float():
-    # newer yfinance: dividendYield 0.23 means 0.23%, it must not become 23%
-    info = {"dividendYield": 0.23, "dividendRate": 7.9, "currentPrice": 3200.0}
-    assert ibs.dividend_yield_pct(info) == 0.25
-    assert ibs.dividend_yield_pct({"trailingAnnualDividendYield": 0.0123}) == 1.23
-    assert ibs.dividend_yield_pct({"dividendYield": 0.23}) is None
-    assert ibs.free_float_pct({"floatShares": 44e6, "sharesOutstanding": 100e6}) == 44.0
-    assert ibs.free_float_pct({"floatShares": 5e6}) is None
-
-
-def test_quarterly_rows():
-    cols = pd.to_datetime(["2025-12-31", "2025-09-30", "2025-06-30", "2025-03-31",
-                           "2024-12-31", "2024-09-30"])
-    stmt = pd.DataFrame({
-        c: {"Total Revenue": rev * 1e7, "Diluted EPS": eps, "Operating Income": op * 1e7, "Net Income": 50e7}
-        for c, rev, eps, op in zip(cols, [173.1, 307.5, 99.3, 396.2, 117.0, 90.0],
-                                   [10.4, 8.8, 4.6, 20.4, 8.0, 5.4], [74.4, 61.5, 26.8, 146.6, 50.3, 20.0])
-    })
-    rows = ibs.quarterly_rows(stmt, n=5)
-    assert [r["q"] for r in rows] == ["Dec-25", "Sep-25", "Jun-25", "Mar-25", "Dec-24"]
-    assert rows[0]["eps"] == 10.4 and rows[0]["eps_yoy"] == 30.0      # 10.4 vs 8.0
-    assert rows[0]["sales_cr"] == 173.1 and rows[0]["sales_yoy"] == 47.9
-    assert rows[0]["opm"] == 43.0
-    assert rows[1]["sales_yoy"] == 241.7                              # vs Sep-24
-    assert rows[2]["eps_yoy"] is None                                 # Jun-24 not in the data
-    assert ibs.quarterly_rows(None) == [] and ibs.quarterly_rows(pd.DataFrame()) == []
-
-
-def test_chart_stats():
-    st = ibs.chart_stats(vcp_stock())
-    assert st["turnover_1d_cr"] > 0 and st["turnover_50_cr"] > 0
-    assert 0 < st["adr20"] < 5 and 0 < st["rvol50"] < 5
-
-
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

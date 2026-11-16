@@ -1283,7 +1283,7 @@
   }
 
   function renderFund(c, row) {
-    const f = c.fund || {}, st = c.stats || {}, box = $("fund");
+    const f = c.fund || {}, box = $("fund");
     const pct = (v) => (v == null ? null : `${nf1.format(v)}%`);
     const num = (v, d = 2) => (v == null ? null : new Intl.NumberFormat("en-IN", { maximumFractionDigits: d, minimumFractionDigits: d }).format(v));
     const items = [
@@ -1292,29 +1292,16 @@
       ["ROE", pct(f.roe)], ["Debt / equity", num(f.debt_to_equity, 1)],
       ["Profit margin", pct(f.profit_margin)], ["Revenue growth (YoY)", pct(f.revenue_growth)],
       ["Earnings growth (YoY)", pct(f.earnings_growth)], ["Dividend yield", pct(f.dividend_yield)],
-      ["Book value ₹", num(f.book_value, 2)], ["Beta", num(f.beta, 2)], ["Free float", pct(f.free_float)],
+      ["Book value ₹", num(f.book_value, 2)], ["Beta", num(f.beta, 2)],
       ["52-week high ₹", num(c.hi52, 2)], ["52-week low ₹", num(c.lo52, 2)],
       ["From 52w high", row.pct_from_52w_high != null ? `${signed(row.pct_from_52w_high)}%` : null],
       ["Above 52w low", row.pct_above_52w_low != null ? `${signed(row.pct_above_52w_low)}%` : null],
-      ["Turnover today", st.turnover_1d_cr != null ? `₹${num(st.turnover_1d_cr, 1)} cr` : null],
-      ["Avg turnover (50d)", st.turnover_50_cr != null ? `₹${num(st.turnover_50_cr, 1)} cr` : null],
-      ["ADR (20d)", pct(st.adr20)], ["Rel. volume (50d)", st.rvol50 != null ? `${num(st.rvol50, 2)}×` : null],
     ];
     const shown = items.filter(([, v]) => v != null && v !== "");
-    const qs = Array.isArray(f.quarters) ? f.quarters : [];
-    if (!shown.length && !qs.length) { box.hidden = true; return; }
+    if (!shown.length) { box.hidden = true; return; }
     box.hidden = false;
     const sector = [f.sector, f.yf_industry].filter(Boolean).join(" · ");
-    const yoy = (v) => (v == null ? `<td class="na">–</td>` : `<td class="${v >= 0 ? "pos" : "neg"}">${v > 0 ? "+" : ""}${Math.round(v)}%</td>`);
-    const cell = (v, d = 1) => `<td>${v == null ? "–" : num(v, d)}</td>`;
-    const qTable = qs.length
-      ? `<div class="qtr-wrap"><table class="qtr"><caption>Quarterly results</caption>` +
-        `<thead><tr><th>Quarter</th><th>EPS ₹</th><th>YoY</th><th>Sales ₹ cr</th><th>YoY</th><th>OPM</th><th>Net profit ₹ cr</th></tr></thead><tbody>` +
-        qs.map((q) => `<tr><th>${q.q}</th>${cell(q.eps, 2)}${yoy(q.eps_yoy)}${cell(q.sales_cr)}${yoy(q.sales_yoy)}` +
-          `<td>${q.opm == null ? "–" : nf1.format(q.opm) + "%"}</td>${cell(q.pat_cr)}</tr>`).join("") +
-        `</tbody></table></div>`
-      : "";
-    box.innerHTML = `<h3>Fundamentals${f.name ? ` <span>${f.name}</span>` : ""}</h3>` + qTable +
+    box.innerHTML = `<h3>Fundamentals${f.name ? ` <span>${f.name}</span>` : ""}</h3>` +
       `<dl>${shown.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join("")}</dl>` +
       `<p class="fund-src">${sector ? sector + ". " : ""}Source: Yahoo Finance, may be out of date. Check the company's filings before relying on it.</p>`;
   }

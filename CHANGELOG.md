@@ -2,10 +2,6 @@
 
 ## Unreleased
 
-- Website: the chart panel shows the last 5 quarters of results (EPS, sales, net profit, operating margin, EPS and sales growth against the same quarter a year earlier), plus free float, turnover today and over 50 days, ADR (20 days) and relative volume (50 days).
-- Fixed: dividend yield showed 100 times too high (0.23% as 23%) with newer yfinance.
-- Website: charts carry about 5 years of daily candles, with a 5Y zoom button.
-- `pine/base_breakout_pro.pine`: new "Quarterly" fundamentals layout (the default) with 5 quarters of EPS and sales, YoY growth, OPM, market cap, P/E, free float, ROE, 52-week high/low distance, turnover, ADR and relative volume. The old table is still there as "Compact".
 - New **50 EMA Pullback** screen: leaders with RS 80+ in an uptrend that ran well above their 50-day EMA and have come back to it, in three stages (at the EMA, bouncing, approaching).
 - Every screen now needs a market cap of ₹500 crore or more (`min_mcap_cr`). The Base Breakout screen's own ₹2,000 crore floor is gone; on the website, market cap buttons raise the floor to ₹1,000 or ₹2,000 crore for all screens.
 - New **Base Breakout** screen: numbered bases with a pivot, listing bases forming near the pivot and recent breakouts, with Sky, VCP and Squat tags. On the website, in the notebook and in the Excel export.
