@@ -66,6 +66,7 @@ def chart_payload(sym: str, df: pd.DataFrame, result: ibs.ScanResult, fund: dict
     }
     for k in (10, 50, 150, 200):
         payload[f"sma{k}"] = _series(c.rolling(k).mean().tail(CHART_BARS))
+    payload["ema50"] = _series(c.ewm(span=result.config.pb_ema, adjust=False).mean().tail(CHART_BARS))
     rl = ibs.rs_line(c, result.benchmark)
     if rl is not None:
         # price / index is tiny (e.g. 0.015) - rebase to 100 at the start of the
@@ -131,6 +132,7 @@ def write_site_data(result: ibs.ScanResult, data: dict, out_dir: str,
         "stocks_scanned": int(len(result.metrics)),
         "stocks_liquid": int(result.metrics["liquid"].sum()) if "liquid" in result.metrics else None,
         "min_turnover_cr": result.config.min_turnover_cr,
+        "min_mcap_cr": result.config.min_mcap_cr,
         "min_price": result.config.min_price,
         "summary": _records(result.summary()),
         "screens": {name: _records(t) for name, t in result.screens.items()},
@@ -287,7 +289,7 @@ def main():
     print(f"Fetching fundamentals for {len(set(matched) | set(heat_syms))} stocks...")
     fund = ibs.fetch_fundamentals(sorted(set(matched) | set(heat_syms)))
     print(f"  got data for {sum(1 for v in fund.values() if v)} stocks")
-    ibs.apply_market_cap_filter(result, fund)      # Base Breakout: market cap floor
+    ibs.apply_market_cap_filter(result, fund)      # every screen: market cap floor
 
     latest = write_site_data(result, data, args.out, args.universe, args.benchmark, fund)
     write_heatmap(data, fund, args.out, members)

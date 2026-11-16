@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- New **50 EMA Pullback** screen: leaders with RS 80+ in an uptrend that ran well above their 50-day EMA and have come back to it, in three stages (at the EMA, bouncing, approaching).
+- Every screen now needs a market cap of ₹500 crore or more (`min_mcap_cr`). The Base Breakout screen's own ₹2,000 crore floor is gone; on the website, market cap buttons raise the floor to ₹1,000 or ₹2,000 crore for all screens.
 - New **Base Breakout** screen: numbered bases with a pivot, listing bases forming near the pivot and recent breakouts, with Sky, VCP and Squat tags. On the website, in the notebook and in the Excel export.
 - Base Breakout filters: within 7% of the pivot on either side, RS rating 65 or more, market cap above ₹2,000 crore.
 - New **Ichimoku** screen: closes up through the top of the cloud in the last 5 sessions, with Tenkan above Kijun and the Chikou span clear of price.

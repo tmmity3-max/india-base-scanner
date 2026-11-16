@@ -21,7 +21,8 @@ Updated automatically after every market close: VCP, Blue Sky, Murphy trend-foll
 | **Trend Template** | Stage-2 uptrend: price above the 50, 150 and 200-day SMAs in that order, 200 SMA rising, within 25% of the 52-week high, RS rating ≥ 70 |
 | **VCP** | Volatility Contraction Pattern: 2+ pullbacks, each tighter than the last, volume drying up, price within 6% of the pivot |
 | **Blue Sky** | At or breaking out to an **all-time high**, so there is no overhead supply |
-| **Base Breakout** | Numbered bases (B1, B2, …) with a pivot: 3+ weeks below a high with a 5–35% pullback. Lists bases forming and fresh breakouts within 7% of the pivot, RS ≥ 65, market cap above ₹2,000 crore |
+| **Base Breakout** | Numbered bases (B1, B2, …) with a pivot: 3+ weeks below a high with a 5–35% pullback. Four stages: forming, fresh breakout, climbing, played out. RS ≥ 65 |
+| **50 EMA Pullback** | Leaders (RS ≥ 80) in an uptrend that ran 8%+ above the 50-day EMA and are now back within 3% of it |
 | **Ichimoku** | Adaptive Ichimoku: a scored Tenkan/Kijun cross, a cloud breakout on volume, or a cloud retest in the last 5 sessions, with an entry, stop and targets |
 | **Multi-Year Base** | Breaking out of a high that held for **2+ years** |
 | **IPO Base** | Recent listings basing just under their post-listing high |
@@ -30,7 +31,7 @@ Updated automatically after every market close: VCP, Blue Sky, Murphy trend-foll
 Every threshold is a **dial** in the notebook form. Change it, re-run, and the re-scan takes seconds without downloading again.
 
 ### Extras
-- **All NSE stocks** with a liquidity filter: price ≥ ₹50 and average daily turnover ≥ ₹1 crore
+- **All NSE stocks** with a liquidity and size filter: price ≥ ₹50, average daily turnover ≥ ₹1 crore, and market cap ≥ ₹500 crore (`min_mcap_cr`; on the website, buttons raise it to ₹1,000 or ₹2,000 crore). Market cap comes from Yahoo Finance after the price scan, so in the notebook it applies only if you fetch fundamentals and call `ibs.apply_market_cap_filter`
 - **RS rating (1-99)** ranked against the liquid stocks you scan
 - **RS line like TradingView**: blue RS line, orange 50-day RS average, blue dots at RS new highs and pink dots when RS leads price. Pick the benchmark (NIFTY 50, NIFTY 500, Midcap 150 or Smallcap 250) on the website's Settings page
 - **Stages and filters** on the website: every screen splits into a few stages (Base Breakout into forming, fresh breakout, climbing and played out), and one set of filters (RS, market cap, turnover, price, distance from the 52-week high) applies to all of them
@@ -131,7 +132,7 @@ Close within `bluesky_max_below_ath` (3%) of the all-time high, at least 3 years
    - **Fresh breakout**: closed above the pivot in the last `base_signal_days` (5) sessions, still above it and no more than `base_max_above_pivot` (7%) beyond it.
    - **Climbing**: broke out up to `base_climb_days` (60) sessions ago and has not closed back under the pivot.
    - **Played out**: broke out in that time but the breakout failed: price has closed back under the pivot, whether straight away or weeks later.
-6. Filters: RS rating of `base_min_rs` (65) or more, and a market cap of at least `base_min_mcap_cr` (₹2,000 crore). Market cap comes from Yahoo Finance after the price scan (`apply_market_cap_filter`), so it applies on the website; in the notebook it applies only if you fetch fundamentals and call that function. A stock with no market cap from Yahoo is dropped.
+6. Filter: RS rating of `base_min_rs` (65) or more.
 7. Tags: **Sky** (the pivot is an all-time high), **VCP** (the last third of the base is tight and 10-day volume is below the 50-day average; a looser test than the VCP screen), **Squat** (the breakout bar closed in the lower 40% of its range).
 
 The same rules are in [`pine/base_breakout_pro.pine`](pine/base_breakout_pro.pine) for TradingView.
@@ -153,6 +154,19 @@ The rules follow the *Adaptive Ichimoku Nexus* TradingView indicator by WillyAlg
 5. **The setup**: entry at the signal close, a stop `ich_sl_atr` (0.5) ATR under the Kijun (2 ATR under the entry if that lands on the wrong side), and targets at 1.5, 2.5 and 4 times the risk. A new signal replaces the open setup.
 
 The chart also marks cloud twists, momentum divergences and flat-Kijun support/resistance zones. The "past setups" line under the chart counts earlier setups on that stock: a third sold at each target, the stop taken first when one bar touches both. It is a tally on the chart's history, not a backtest.
+
+</details>
+
+<details>
+<summary><b>50 EMA Pullback</b></summary>
+
+A leader resting on its rising 50-day EMA.
+
+1. RS rating of `pb_min_rs` (80) or more.
+2. Uptrend: close above the 200-day SMA, the 50 EMA above the 200 SMA and higher than ten sessions ago.
+3. A real pullback: the high was at least `pb_min_extension` (8%) above the EMA at some point in the last `pb_lookback` (40) sessions.
+4. Now the close is between `pb_max_below` (2%) under and `pb_max_above` (3%) over the EMA.
+5. Stages: **At the 50 EMA** (the low came within 0.5% of it in the last three sessions, or the close is within 1%), **Bouncing** (touched it in the last `pb_touch_days` (5) sessions and closed above the previous day's high), **Approaching** (within 3%, no touch yet).
 
 </details>
 

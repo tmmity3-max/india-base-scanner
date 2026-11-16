@@ -14,13 +14,14 @@
     "VCP": "Tightening pullbacks with volume drying up, close to the pivot. Sorted by RS rating.",
     "Blue Sky": "At or breaking out to an all-time high, with strong relative strength.",
     "Murphy": "John Murphy's trend-following: above a rising 40-week SMA, with a fresh 10/50 crossover, 4-week-rule breakout or crossover + 2-week breakout in the last 5 sessions. Newest signals first.",
-    "Base Breakout": "Numbered bases with a pivot: at least 3 weeks below a high with a 5–35% pullback. Pick a stage: forming, fresh breakout, climbing or played out. RS 65 or more and a market cap above ₹2,000 crore.",
+    "Base Breakout": "Numbered bases with a pivot: at least 3 weeks below a high with a 5–35% pullback. Pick a stage: forming, fresh breakout, climbing or played out. RS 65 or more.",
     "Ichimoku": "Adaptive Ichimoku: a bullish signal in the last 5 sessions (a scored Tenkan/Kijun cross, a cloud breakout on volume, or a retest of the cloud) with nothing bearish since. Newest first.",
+    "50 EMA Pullback": "Leaders resting on their 50-day EMA: RS 80 or more, in an uptrend, ran at least 8% above the EMA in the last 40 sessions and now back within 3% of it. Strongest RS first.",
     "Multi-Year Base": "Back at a high that held for two years or more. Sorted by base length.",
     "IPO Base": "Recent listings basing just under their post-listing high.",
     "Trend Template": "Every liquid stock in a Stage-2 uptrend with RS 70 or more. The pool the VCP screen draws from.",
   };
-  const ORDER = ["VCP", "Blue Sky", "Murphy", "Base Breakout", "Ichimoku", "Multi-Year Base", "IPO Base", "Trend Template"];
+  const ORDER = ["VCP", "Blue Sky", "Murphy", "Base Breakout", "50 EMA Pullback", "Ichimoku", "Multi-Year Base", "IPO Base", "Trend Template"];
 
   // Stages: each screen splits into a few groups. `of` names a row's stage,
   // `list` is the order the cards appear in, with a one-line note for each.
@@ -46,6 +47,11 @@
       of: (r) => r.ich_signal,
       list: [["TK cross", "Tenkan crossed above Kijun with a score of 50+"], ["Cloud breakout", "closed up through the cloud on volume"],
              ["Cloud retest", "came back to the cloud edge and held"]],
+    },
+    "50 EMA Pullback": {
+      of: (r) => r.pb_stage,
+      list: [["At the 50 EMA", "touching it, or within 1%"], ["Bouncing", "touched it and closed above yesterday's high"],
+             ["Approaching", "within 3% and still coming down"]],
     },
     "Multi-Year Base": {
       of: (r) => (r.myb_pct_from_pivot >= 0 ? "Above the old high" : "Under the old high"),
@@ -116,6 +122,8 @@
     base_pivot: ["Pivot ₹", "num"], base_pct_from_pivot: ["From pivot %", "signed"],
     base_weeks: ["Base weeks", "num"], base_depth: ["Base depth %", "pct"],
     base_tags: ["Tags", "txt"], base_days_ago: ["Breakout days ago", "int"],
+    pb_stage: ["Stage", "txt"], pb_ema50: ["50 EMA ₹", "num"], pb_pct_from_ema: ["From 50 EMA %", "signed"],
+    pb_days_since_touch: ["Days since touch", "int"], pb_from_high: ["Off recent high %", "signed"],
     ich_signal: ["Signal", "txt"], ich_days_ago: ["Days ago", "int"], ich_score: ["Score", "int"],
     ich_trend: ["Trend", "txt"], ich_momentum: ["Momentum", "txt"], ich_cloud: ["Price vs cloud", "txt"],
     ich_entry: ["Entry ₹", "num"], ich_sl: ["Stop ₹", "num"], ich_tp1: ["Target 1 ₹", "num"],
@@ -328,6 +336,7 @@
 
     setData(c, o = {}) {
       this.c = c; this.hover = -1; this.showSma10 = !!o.sma10 && !!c.sma10;
+      this.showEma50 = !!o.ema50 && !!c.ema50;
       this.ich = o.ichimoku ? computeIchimoku(c) : null;
       // only the levels asked for; bases as boxes when wanted
       this.levels = (c.levels || []).filter((lv) => !o.levels || o.levels.includes(lv.label));
@@ -675,6 +684,7 @@
       } else {
         line(c.sma200, css("--sma200"), Y, lw); line(c.sma150, css("--sma150"), Y, lw); line(c.sma50, css("--sma50"), Y, lw);
         if (this.showSma10) line(c.sma10, css("--sma10"), Y, lw);
+        if (this.showEma50) line(c.ema50, css("--ema50"), Y, mini ? 1.6 : 2.2);
       }
       const bars = SETTINGS.chartType === "bars";
       const tick = Math.max(1.5, Math.min(6, step * 0.4));      // open/close tick length for OHLC bars
@@ -893,7 +903,7 @@
     const d = state.data;
     $("headline").textContent = `Setups after the close on ${longDate(d.data_date)}`;
     const liquid = d.stocks_liquid != null
-      ? `${nf0.format(d.stocks_liquid)} liquid stocks (price of ₹${d.min_price ?? 50} or more and average daily turnover of ₹${d.min_turnover_cr} crore or more) out of ${nf0.format(d.stocks_scanned)} ${pretty(d.universe) === "all NSE stocks" ? "NSE stocks" : "in the " + pretty(d.universe)} scanned. `
+      ? `${nf0.format(d.stocks_liquid)} liquid stocks (price of ₹${d.min_price ?? 50} or more and average daily turnover of ₹${d.min_turnover_cr} crore or more${d.min_mcap_cr ? `; the screens also need a market cap of ₹${nf0.format(d.min_mcap_cr)} crore or more` : ""}) out of ${nf0.format(d.stocks_scanned)} ${pretty(d.universe) === "all NSE stocks" ? "NSE stocks" : "in the " + pretty(d.universe)} scanned. `
       : `${nf0.format(d.stocks_scanned)} stocks from the ${pretty(d.universe)} scanned. `;
     $("meta").textContent = liquid + `RS line drawn against the ${BENCH ? BENCH.name : pretty(d.benchmark)} (change it in Settings). Updated ${timeOf(d.generated_at)}.`;
 
@@ -904,6 +914,7 @@
     $("search").addEventListener("input", (e) => { state.query = e.target.value.trim().toLowerCase(); refreshList(); });
     $("closeChart").addEventListener("click", () => $("chartPanel").classList.remove("open"));
     renderFilters();
+    renderMcap();
     const fn = activeFilters();
     $("filterBtn").textContent = fn ? `Filters (${fn})` : "Filters";
     $("filterBtn").classList.toggle("on", fn > 0);
@@ -1058,8 +1069,29 @@
     cb.addEventListener("change", () => { if (cb.checked) state.filters.rsHigh = true; else delete state.filters.rsHigh; filtersChanged(); });
     box.appendChild(l);
   }
+  // quick market-cap buttons: the scan's own floor, or a higher one
+  const MCAP_STEPS = [1000, 2000];
+  function renderMcap() {
+    const box = $("mcapSeg"), floor = (state.data && state.data.min_mcap_cr) || 500;
+    const cur = state.filters.mcap != null && state.filters.mcap > floor ? state.filters.mcap : floor;
+    box.innerHTML = `<span class="seg-label">Market cap</span>`;
+    for (const v of [floor, ...MCAP_STEPS.filter((x) => x > floor)]) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.textContent = `₹${nf0.format(v)} cr+`;
+      b.setAttribute("aria-pressed", cur === v ? "true" : "false");
+      b.addEventListener("click", () => {
+        if (v === floor) delete state.filters.mcap; else state.filters.mcap = v;
+        const inp = document.querySelector('[data-filter="mcap"]');
+        if (inp) inp.value = v === floor ? "" : v;
+        filtersChanged();
+      });
+      box.appendChild(b);
+    }
+  }
   function filtersChanged() {
     saveFilters();
+    renderMcap();
     const n = activeFilters();
     $("filterBtn").textContent = n ? `Filters (${n})` : "Filters";
     $("filterBtn").classList.toggle("on", n > 0);
@@ -1230,6 +1262,7 @@
           `That count assumes a third is sold at each target and takes the stop first when one bar touches both. It is not a backtest.` : "");
     }
     $("sma10Legend").hidden = !(murphy && c.sma10);
+    $("ema50Legend").hidden = !(state.screen === "50 EMA Pullback" && c.ema50);
     for (const el of document.querySelectorAll(".legend .k-ma")) el.hidden = ich;
     for (const el of document.querySelectorAll(".legend .k-ich")) el.hidden = !ich;
     mainChart.setData(c, chartOptions());
@@ -1238,7 +1271,7 @@
   // bases as boxes on the Base Breakout screen or whenever "Bases" is switched on
   function chartOptions() {
     const s = state.screen, lv = SCREEN_LEVEL[s];
-    return { sma10: s === "Murphy", ichimoku: s === "Ichimoku", levels: lv ? [lv] : [],
+    return { sma10: s === "Murphy", ema50: s === "50 EMA Pullback", ichimoku: s === "Ichimoku", levels: lv ? [lv] : [],
              bases: s !== "Ichimoku" && (s === "Base Breakout" || state.showBases) };
   }
   function setBases(on) {
@@ -1297,6 +1330,7 @@
       case "Murphy": return r.murphy_signal ? `${r.murphy_signal}, ${r.murphy_days_ago === 0 ? "today" : r.murphy_days_ago + "d ago"}, entry ₹${nf2.format(r.murphy_entry)}` : "";
       case "Base Breakout": return r.base_pivot != null ? `${r.base_state}, B${r.base_no}, pivot ₹${nf2.format(r.base_pivot)} (${signed(r.base_pct_from_pivot)}%), ${r.base_weeks}w${r.base_tags ? ", " + r.base_tags : ""}` : "";
       case "Ichimoku": return r.ich_signal ? `${r.ich_signal} ${r.ich_days_ago === 0 ? "today" : r.ich_days_ago + "d ago"}, score ${r.ich_score}, stop ₹${nf2.format(r.ich_sl)}` : "";
+      case "50 EMA Pullback": return r.pb_ema50 != null ? `${r.pb_stage}, 50 EMA ₹${nf2.format(r.pb_ema50)} (${signed(r.pb_pct_from_ema)}%), RS ${r.rs_rating}` : "";
       case "Multi-Year Base": return r.myb_pivot != null ? `Old high ₹${nf2.format(r.myb_pivot)} held ${r.myb_base_years} years` : "";
       case "IPO Base": return r.ipo_high != null ? `Listing high ₹${nf2.format(r.ipo_high)} (${signed(r.ipo_pct_from_high)}%)` : "";
       default: return "";

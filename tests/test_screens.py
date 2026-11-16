@@ -191,14 +191,46 @@ def test_base_boxes():
 
 
 def test_market_cap_filter():
-    data = {"BASECO": base_breakout_stock(), "FORMCO": base_forming_stock()}
+    data = {"BASECO": base_breakout_stock(), "FORMCO": base_forming_stock(), "SKYCO": bluesky_stock()}
     cfg = ibs.ScanConfig(min_rs=0, min_turnover_cr=0, base_min_rs=0)
+    assert cfg.min_mcap_cr == 500
     res = ibs.scan(data, cfg)
     assert {"BASECO", "FORMCO"} <= set(res.screens["Base Breakout"]["symbol"])
+    assert "SKYCO" in set(res.screens["Blue Sky"]["symbol"])
     ibs.apply_market_cap_filter(res, {})                       # no fundamentals: nothing dropped
-    assert len(res.screens["Base Breakout"]) == 2
-    ibs.apply_market_cap_filter(res, {"BASECO": {"market_cap_cr": 5000}, "FORMCO": {"market_cap_cr": 900}})
-    assert list(res.screens["Base Breakout"]["symbol"]) == ["BASECO"]
+    assert {"BASECO", "FORMCO"} <= set(res.screens["Base Breakout"]["symbol"])
+    # the floor applies to every screen; a stock with no market cap is dropped as well
+    ibs.apply_market_cap_filter(res, {"BASECO": {"market_cap_cr": 5000}, "FORMCO": {"market_cap_cr": 300}})
+    for name, table in res.screens.items():
+        assert set(table["symbol"]) <= {"BASECO"}, name
+    assert "BASECO" in set(res.screens["Base Breakout"]["symbol"])
+
+
+def _run_up(*more):
+    # a steady climb, then a fast leg that leaves price well above its 50 EMA
+    return make_series([(0, 100), (250, 150), (40, 205), *more], noise=0.002, seed=5)
+
+
+def pullback_stock():
+    return _run_up((16, 185))
+
+
+def test_pullback_stages():
+    cfg = ibs.ScanConfig()
+    out = ibs.find_pullback(pullback_stock(), cfg)
+    assert out["pullback"] and out["pb_stage"] == "At the 50 EMA", out
+    assert abs(out["pb_pct_from_ema"]) <= 1 and out["pb_from_high"] < -5
+    assert ibs.find_pullback(_run_up((16, 184.5), (2, 189)), cfg)["pb_stage"] == "Bouncing"
+    assert ibs.find_pullback(_run_up((12, 189.5)), cfg)["pb_stage"] == "Approaching"
+
+
+def test_pullback_rejects():
+    cfg = ibs.ScanConfig()
+    assert not ibs.find_pullback(_run_up((5, 210)), cfg)["pullback"]        # still far above the EMA
+    assert not ibs.find_pullback(_run_up((20, 165)), cfg)["pullback"]       # fell through it
+    assert not ibs.find_pullback(downtrend_stock(), cfg)["pullback"]
+    # a slow grinder that never ran away from its EMA is not a pullback
+    assert not ibs.find_pullback(make_series([(0, 100), (300, 160)], noise=0.002, seed=5), cfg)["pullback"]
 
 
 def ichimoku_stock():
@@ -261,8 +293,8 @@ def test_indicators_in_range():
 def test_full_scan_and_excel(tmp_path=None):
     data = {"VCPCO": vcp_stock(), "SKYCO": bluesky_stock(), "MYBCO": multiyear_stock(),
             "IPOCO": ipo_stock(), "DOWNCO": downtrend_stock(), "MURCO": murphy_stock(),
-            "BASECO": base_breakout_stock(), "ICHCO": ichimoku_stock()}
-    cfg = ibs.ScanConfig(min_rs=0, min_turnover_cr=0, base_min_rs=0)
+            "BASECO": base_breakout_stock(), "ICHCO": ichimoku_stock(), "PULLCO": pullback_stock()}
+    cfg = ibs.ScanConfig(min_rs=0, min_turnover_cr=0, base_min_rs=0, pb_min_rs=0)
     res = ibs.scan(data, cfg)
     s = res.screens
     assert "VCPCO" in set(s["VCP"]["symbol"])
@@ -274,6 +306,8 @@ def test_full_scan_and_excel(tmp_path=None):
     assert "DOWNCO" not in set(s["Base Breakout"]["symbol"])
     assert "ICHCO" in set(s["Ichimoku"]["symbol"])
     assert "DOWNCO" not in set(s["Ichimoku"]["symbol"])
+    assert "PULLCO" in set(s["50 EMA Pullback"]["symbol"])
+    assert "DOWNCO" not in set(s["50 EMA Pullback"]["symbol"])
     assert "DOWNCO" not in set(s["Trend Template"]["symbol"])
     path = os.path.join(str(tmp_path or "."), "test_results.xlsx")
     res.to_excel(path)
