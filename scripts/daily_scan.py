@@ -89,6 +89,8 @@ def chart_payload(sym: str, df: pd.DataFrame, result: ibs.ScanResult, fund: dict
         if bool(row.get(flag, False)) and val == val and val is not None:
             levels.append({"label": label, "price": _clean(val)})
     payload["levels"] = levels
+    # every base in the chart window, drawn as a box with its breakout
+    payload["bases"] = ibs.base_boxes(full, result.config, since=tail.index[0])
     payload["screens"] = [n for n, t in result.screens.items()
                           if not t.empty and sym in set(t["symbol"])]
     hi52 = float(full["High"].tail(252).max()); lo52 = float(full["Low"].tail(252).min())

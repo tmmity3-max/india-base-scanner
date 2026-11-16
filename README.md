@@ -33,7 +33,8 @@ Every threshold is a **dial** in the notebook form. Change it, re-run, and the r
 - **All NSE stocks** with a liquidity filter: price ≥ ₹50 and average daily turnover ≥ ₹1 crore
 - **RS rating (1-99)** ranked against the liquid stocks you scan
 - **RS line like TradingView**: blue RS line, orange 50-day RS average, blue dots at RS new highs and pink dots when RS leads price. Pick the benchmark (NIFTY 50, NIFTY 500, Midcap 150 or Smallcap 250) on the website's Settings page
-- **Charts**: candles, 50/150/200 SMAs, pivot lines, volume and the RS line
+- **Stages and filters** on the website: every screen splits into a few stages (Base Breakout into forming, fresh breakout, climbing and played out), and one set of filters (RS, market cap, turnover, price, distance from the 52-week high) applies to all of them
+- **Charts**: candles, 50/150/200 SMAs, bases drawn as boxes with their pivot and breakout, the key level of the screen you are on, volume and the RS line
 - **Market cap and fundamentals** (P/E, P/B, ROE, debt/equity, margins, growth, dividend yield) from Yahoo Finance, plus distance from the 52-week high and low
 - **Excel export**: one sheet per screen, plus your settings and every metric
 - Universes: NIFTY 50 / 100 / 200 / 500, Midcap 150, Smallcap 250, Microcap 250, all NSE EQ stocks, or your own list
@@ -125,7 +126,11 @@ Close within `bluesky_max_below_ath` (3%) of the all-time high, at least 3 years
 2. It becomes a base once price has spent `base_min_weeks` (3) below the pivot with a pullback between `base_min_depth` (5%) and `base_max_depth` (35%). A deeper pullback cancels it.
 3. A close above the pivot is the breakout. With `base_trend_filter` on, the close must also be above the 50 and 200-day SMAs.
 4. Bases are numbered B1, B2 and so on. The count restarts at 1 when a base undercuts the low of the base before it.
-5. Listed: bases forming within `base_max_below_pivot` (7%) of the pivot, and breakouts from the last `base_signal_days` (5) sessions that are still above the pivot and no more than `base_max_above_pivot` (7%) beyond it.
+5. Every listed stock is in one of four stages:
+   - **Forming**: a base is in place and price is within `base_max_below_pivot` (7%) of the pivot.
+   - **Fresh breakout**: closed above the pivot in the last `base_signal_days` (5) sessions, still above it and no more than `base_max_above_pivot` (7%) beyond it.
+   - **Climbing**: broke out up to `base_climb_days` (60) sessions ago and has not closed back under the pivot.
+   - **Played out**: broke out in that time but has closed back under the pivot, or is more than `base_played_out_pct` (25%) above it.
 6. Filters: RS rating of `base_min_rs` (65) or more, and a market cap of at least `base_min_mcap_cr` (₹2,000 crore). Market cap comes from Yahoo Finance after the price scan (`apply_market_cap_filter`), so it applies on the website; in the notebook it applies only if you fetch fundamentals and call that function. A stock with no market cap from Yahoo is dropped.
 7. Tags: **Sky** (the pivot is an all-time high), **VCP** (the last third of the base is tight and 10-day volume is below the 50-day average; a looser test than the VCP screen), **Squat** (the breakout bar closed in the lower 40% of its range).
 

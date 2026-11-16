@@ -374,7 +374,9 @@ class ScanConfig:
     base_max_above_pivot: float = 7.0     # % above pivot still listed as a breakout
     base_min_rs: float = 65.0             # RS rating needed for the screen
     base_min_mcap_cr: float = 2000.0      # market cap, ₹ crore (needs fundamentals; see apply_market_cap_filter)
-    base_signal_days: int = 5             # list breakouts from the last N sessions
+    base_signal_days: int = 5             # a breakout is "fresh" for N sessions
+    base_climb_days: int = 60             # after that it is "climbing" for up to N sessions
+    base_played_out_pct: float = 25.0     # % above the pivot at which the move is "played out"
     base_squat_pct: float = 40.0          # breakout closing in the lower N% of its bar = squat
     base_history_bars: int = 1260         # bars of history the base count is built from (~5 years)
 
@@ -508,24 +510,37 @@ def find_vcp(df: pd.DataFrame, cfg: ScanConfig) -> dict:
     return out
 
 
-def find_base(df: pd.DataFrame, cfg: ScanConfig) -> dict:
-    """Numbered bases with a pivot, the same rules as ``pine/base_breakout_pro.pine``.
+BASE_STAGES = ("Forming", "Fresh breakout", "Climbing", "Played out")
 
-    Walk the bars once, closed bars only. A structure starts at a swing high
-    (the pivot). It becomes a *base* once price has spent ``base_min_weeks``
-    below that high with a pullback between ``base_min_depth`` and
-    ``base_max_depth``. A close above the pivot is the breakout; the base
-    count goes up by one, or restarts at 1 when the base undercut the low of
-    the previous base. A stock is listed while a base is forming close to its
-    pivot, or for ``base_signal_days`` after a breakout that is still holding
-    and not yet extended beyond ``base_max_above_pivot``.
+
+def _walk_bases(df: pd.DataFrame, cfg: ScanConfig) -> Tuple[dict, List[dict]]:
+    """Walk the bars once and return (current base metrics, every base found).
+
+    Same rules as ``pine/base_breakout_pro.pine``, closed bars only. A structure
+    starts at a swing high (the pivot). It becomes a *base* once price has spent
+    ``base_min_weeks`` below that high with a pullback between
+    ``base_min_depth`` and ``base_max_depth``. A close above the pivot is the
+    breakout; the base count goes up by one, or restarts at 1 when the base
+    undercut the low of the previous base.
+
+    The stock's stage is one of ``BASE_STAGES``:
+
+    * **Fresh breakout**: broke out in the last ``base_signal_days`` sessions,
+      still above the pivot and no more than ``base_max_above_pivot`` beyond it.
+    * **Forming**: a base is in place and price is within
+      ``base_max_below_pivot`` of its pivot.
+    * **Climbing**: broke out up to ``base_climb_days`` sessions ago and has not
+      closed back below the pivot since.
+    * **Played out**: broke out in that window but has since closed below the
+      pivot, or is more than ``base_played_out_pct`` above it.
     """
     out = {"base_bo": False, "base_state": "", "base_no": 0, "base_pivot": np.nan,
            "base_pct_from_pivot": np.nan, "base_weeks": np.nan, "base_depth": np.nan,
            "base_tags": "", "base_days_ago": np.nan}
+    bases: List[dict] = []
     n = len(df)
     if n < 60:
-        return out
+        return out, bases
     c_s, v_s = df["Close"], df["Volume"]
     h = df["High"].to_numpy(float)
     l = df["Low"].to_numpy(float)
@@ -575,8 +590,9 @@ def find_base(df: pd.DataFrame, cfg: ScanConfig) -> dict:
                     rng = h[i] - l[i]
                     squat = bool(rng > 0 and (c[i] - l[i]) / rng * 100 < cfg.base_squat_pct)
                     tags = [t for t, on in (("VCP", vcp), ("Sky", peak_sky), ("Squat", squat)) if on]
-                    last = {"i": i, "pivot": peak, "no": base_n, "weeks": weeks,
-                            "depth": depth, "tags": ", ".join(tags)}
+                    last = {"i": i, "start": peak_i, "pivot": peak, "low": low, "no": base_n,
+                            "weeks": weeks, "depth": depth, "tags": ", ".join(tags), "breakout": True}
+                    bases.append(last)
                 restart = True
         if restart:
             peak, peak_i, low = h[i], i, l[i]
@@ -584,23 +600,58 @@ def find_base(df: pd.DataFrame, cfg: ScanConfig) -> dict:
             active = False
 
     close = c[-1]
-    if last is not None and (n - 1 - last["i"]) <= cfg.base_signal_days and close >= last["pivot"]:
-        out.update(base_bo=bool((close / last["pivot"] - 1) * 100 <= cfg.base_max_above_pivot),
-                   base_state="Breakout", base_no=last["no"],
-                   base_pivot=round(last["pivot"], 2),
-                   base_pct_from_pivot=round((close / last["pivot"] - 1) * 100, 2),
-                   base_weeks=round(last["weeks"], 1), base_depth=round(last["depth"], 1),
-                   base_tags=last["tags"], base_days_ago=int(n - 1 - last["i"]))
-    elif active:
+    forming = None
+    if active:
         undercut = prev_low == prev_low and low < prev_low
-        dist = (close / peak - 1) * 100
-        out.update(base_state="Forming", base_no=1 if undercut else base_n + 1,
-                   base_pivot=round(peak, 2), base_pct_from_pivot=round(dist, 2),
-                   base_weeks=round((days[-1] - days[peak_i]) / 7, 1),
-                   base_depth=round((peak - low) / peak * 100, 1),
-                   base_tags="Sky" if peak_sky else "")
-        out["base_bo"] = bool(dist >= -cfg.base_max_below_pivot)
-    return out
+        forming = {"i": n - 1, "start": peak_i, "pivot": peak, "low": low,
+                   "no": 1 if undercut else base_n + 1,
+                   "weeks": (days[-1] - days[peak_i]) / 7, "depth": (peak - low) / peak * 100,
+                   "tags": "Sky" if peak_sky else "", "breakout": False}
+        bases.append(forming)
+
+    def fill(b, state, days_ago=np.nan):
+        out.update(base_bo=True, base_state=state, base_no=b["no"], base_pivot=round(b["pivot"], 2),
+                   base_pct_from_pivot=round((close / b["pivot"] - 1) * 100, 2),
+                   base_weeks=round(b["weeks"], 1), base_depth=round(b["depth"], 1),
+                   base_tags=b["tags"], base_days_ago=days_ago)
+
+    ago = (n - 1 - last["i"]) if last is not None else None
+    gain = (close / last["pivot"] - 1) * 100 if last is not None else np.nan
+    held = last is not None and bool((c[last["i"]:] >= last["pivot"]).all())
+    if last is not None and ago <= cfg.base_signal_days and held and gain <= cfg.base_max_above_pivot:
+        fill(last, "Fresh breakout", int(ago))
+    elif forming is not None and (close / peak - 1) * 100 >= -cfg.base_max_below_pivot:
+        fill(forming, "Forming")
+    elif last is not None and ago <= cfg.base_climb_days:
+        fill(last, "Climbing" if held and gain <= cfg.base_played_out_pct else "Played out", int(ago))
+    elif forming is not None:                    # a base, but too far under its pivot to list
+        fill(forming, "Forming")
+        out["base_bo"] = False
+    return out, bases
+
+
+def find_base(df: pd.DataFrame, cfg: ScanConfig) -> dict:
+    """Stage, pivot and base number of the stock's current base. See ``_walk_bases``."""
+    return _walk_bases(df, cfg)[0]
+
+
+def base_boxes(df: pd.DataFrame, cfg: ScanConfig, since=None) -> List[dict]:
+    """Every base as a box for charting: start and end date, pivot, low and label.
+
+    ``bo`` is 1 for a base that broke out (``e`` is the breakout bar) and 0 for
+    the base still forming. ``since`` drops bases that ended before that date.
+    """
+    idx = df.index
+    boxes = []
+    for b in _walk_bases(df, cfg)[1]:
+        if since is not None and idx[b["i"]] < since:
+            continue
+        tags = [t for t in b["tags"].split(", ") if t and t != "Squat"]
+        label = " · ".join(["+".join(tags)] * bool(tags) + [f"B{b['no']}", f"{round(b['weeks'])}w"])
+        boxes.append({"s": idx[b["start"]].strftime("%Y-%m-%d"), "e": idx[b["i"]].strftime("%Y-%m-%d"),
+                      "p": round(float(b["pivot"]), 2), "l": round(float(b["low"]), 2),
+                      "t": label, "bo": int(b["breakout"]), "sq": int("Squat" in b["tags"])})
+    return boxes
 
 
 def find_ichimoku(df: pd.DataFrame, cfg: ScanConfig) -> dict:

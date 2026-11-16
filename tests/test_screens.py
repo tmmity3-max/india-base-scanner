@@ -139,7 +139,7 @@ def test_base_forming():
 
 def test_base_breakout():
     out = ibs.find_base(base_breakout_stock(), ibs.ScanConfig())
-    assert out["base_bo"] and out["base_state"] == "Breakout", out
+    assert out["base_bo"] and out["base_state"] == "Fresh breakout", out
     assert out["base_no"] >= 1 and out["base_days_ago"] <= 5
     assert out["base_pct_from_pivot"] >= 0
 
@@ -155,11 +155,37 @@ def test_base_not_in_downtrend():
     assert not ibs.find_base(downtrend_stock(), ibs.ScanConfig())["base_bo"]
 
 
-def test_base_extended_breakout_not_listed():
-    # same breakout, but already 12% above the pivot: too extended to list
+def _after_breakout(*more):
+    return make_series([(0, 100), (300, 200), (15, 176), (13, 198), (2, 208), *more], noise=0.002, seed=5)
+
+
+def test_base_stages_after_breakout():
+    cfg = ibs.ScanConfig()
+    # three weeks on, 12% above the pivot and never back under it: climbing
+    out = ibs.find_base(_after_breakout((20, 225)), cfg)
+    assert out["base_state"] == "Climbing" and out["base_bo"], out
+    # 35% above the pivot: the move is played out
+    assert ibs.find_base(_after_breakout((20, 270)), cfg)["base_state"] == "Played out"
+    # closed back under the pivot: the breakout failed
+    out = ibs.find_base(_after_breakout((8, 190)), cfg)
+    assert out["base_state"] == "Played out" and out["base_pct_from_pivot"] < 0, out
+    # a breakout already more than 7% beyond the pivot is not "fresh"
     df = make_series([(0, 100), (300, 200), (15, 176), (13, 198), (2, 225)], noise=0.002, seed=5)
-    out = ibs.find_base(df, ibs.ScanConfig())
-    assert out["base_state"] == "Breakout" and not out["base_bo"], out
+    assert ibs.find_base(df, cfg)["base_state"] == "Climbing"
+    assert set(ibs.BASE_STAGES) >= {"Forming", "Fresh breakout", "Climbing", "Played out"}
+
+
+def test_base_boxes():
+    df = base_breakout_stock()
+    boxes = ibs.base_boxes(df, ibs.ScanConfig(), since=df.index[0])
+    b = boxes[-1]
+    assert b["bo"] == 1 and b["t"].startswith("Sky · B1") and b["l"] < b["p"], b
+    assert b["s"] < b["e"] == df.index[-2].strftime("%Y-%m-%d")
+    # the base still forming is the last box and has no breakout
+    f = ibs.base_boxes(base_forming_stock(), ibs.ScanConfig())[-1]
+    assert f["bo"] == 0 and f["e"] == base_forming_stock().index[-1].strftime("%Y-%m-%d")
+    # bases that ended before `since` are dropped
+    assert ibs.base_boxes(df, ibs.ScanConfig(), since=df.index[-1]) == []
 
 
 def test_market_cap_filter():
