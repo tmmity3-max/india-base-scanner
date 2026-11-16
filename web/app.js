@@ -14,13 +14,79 @@
     "VCP": "Tightening pullbacks with volume drying up, close to the pivot. Sorted by RS rating.",
     "Blue Sky": "At or breaking out to an all-time high, with strong relative strength.",
     "Murphy": "John Murphy's trend-following: above a rising 40-week SMA, with a fresh 10/50 crossover, 4-week-rule breakout or crossover + 2-week breakout in the last 5 sessions. Newest signals first.",
-    "Base Breakout": "Numbered bases with a pivot: at least 3 weeks below a high with a 5–35% pullback. Lists bases forming and breakouts from the last 5 sessions, within 7% of the pivot, with RS 65 or more and a market cap above ₹2,000 crore.",
+    "Base Breakout": "Numbered bases with a pivot: at least 3 weeks below a high with a 5–35% pullback. Pick a stage: forming, fresh breakout, climbing or played out. RS 65 or more and a market cap above ₹2,000 crore.",
     "Ichimoku": "Closed up through the top of the Ichimoku cloud in the last 5 sessions and still above it, with Tenkan above Kijun and the Chikou span clear of price. Newest breakouts first.",
     "Multi-Year Base": "Back at a high that held for two years or more. Sorted by base length.",
     "IPO Base": "Recent listings basing just under their post-listing high.",
     "Trend Template": "Every liquid stock in a Stage-2 uptrend with RS 70 or more. The pool the VCP screen draws from.",
   };
   const ORDER = ["VCP", "Blue Sky", "Murphy", "Base Breakout", "Ichimoku", "Multi-Year Base", "IPO Base", "Trend Template"];
+
+  // Stages: each screen splits into a few groups. `of` names a row's stage,
+  // `list` is the order the cards appear in, with a one-line note for each.
+  const STAGES = {
+    "Base Breakout": {
+      of: (r) => r.base_state,
+      list: [["Forming", "resting under the pivot"], ["Fresh breakout", "cleared the pivot in the last 5 sessions"],
+             ["Climbing", "broke out earlier and still holding"], ["Played out", "back under the pivot, or 25%+ above it"]],
+    },
+    "VCP": {
+      of: (r) => (r.vcp_pct_from_pivot > 0 ? "Breaking out" : "Setting up"),
+      list: [["Setting up", "tight, just under the pivot"], ["Breaking out", "already above the pivot"]],
+    },
+    "Blue Sky": {
+      of: (r) => (r.new_ath_recent ? "New high this week" : "Just under the high"),
+      list: [["New high this week", "made an all-time high in the last 5 sessions"], ["Just under the high", "within 3% of the all-time high"]],
+    },
+    "Murphy": {
+      of: (r) => (r.murphy_days_ago === 0 ? "Signal today" : r.murphy_days_ago <= 2 ? "1–2 sessions ago" : "3–5 sessions ago"),
+      list: [["Signal today", "entry signal on the latest bar"], ["1–2 sessions ago", "still close to the entry"], ["3–5 sessions ago", "check how far it has moved"]],
+    },
+    "Ichimoku": {
+      of: (r) => (r.ich_from === "Below cloud" ? "From below the cloud" : "From inside the cloud"),
+      list: [["From below the cloud", "crossed the whole cloud"], ["From inside the cloud", "was already in the cloud"]],
+    },
+    "Multi-Year Base": {
+      of: (r) => (r.myb_pct_from_pivot >= 0 ? "Above the old high" : "Under the old high"),
+      list: [["Under the old high", "approaching it"], ["Above the old high", "breaking out"]],
+    },
+    "IPO Base": {
+      of: (r) => (r.ipo_pct_from_high >= 0 ? "Above the listing high" : "Under the listing high"),
+      list: [["Under the listing high", "still basing"], ["Above the listing high", "breaking out"]],
+    },
+    "Trend Template": {
+      of: (r) => (r.rs_rating >= 90 ? "RS 90+" : r.rs_rating >= 80 ? "RS 80–89" : "RS 70–79"),
+      list: [["RS 90+", "the top tenth"], ["RS 80–89", "strong"], ["RS 70–79", "above average"]],
+    },
+  };
+  // The chart shows only the key level of the screen you are on, so the lines don't pile up.
+  const SCREEN_LEVEL = {
+    "VCP": "VCP pivot", "Blue Sky": "All-time high", "Murphy": "Murphy entry",
+    "Multi-Year Base": "Multi-year high", "IPO Base": "IPO high", "Ichimoku": "Cloud top",
+  };
+  // Filters that apply to every screen: [key, label, test(row, value)]
+  const FILTERS = [
+    ["rs", "RS rating at least", (r, v) => r.rs_rating != null && r.rs_rating >= v],
+    ["mcap", "Market cap at least (₹ cr)", (r, v) => r.market_cap_cr != null && r.market_cap_cr >= v],
+    ["turnover", "Daily turnover at least (₹ cr)", (r, v) => r.turnover_cr != null && r.turnover_cr >= v],
+    ["price", "Price at least (₹)", (r, v) => r.close != null && r.close >= v],
+    ["near", "Within % of 52-week high", (r, v) => r.pct_from_52w_high != null && -r.pct_from_52w_high <= v],
+  ];
+  const FKEY = "ibs-filters";
+  function loadFilters() {
+    try { return JSON.parse(localStorage.getItem(FKEY) || "{}") || {}; } catch (e) { return {}; }
+  }
+  function saveFilters() {
+    try { localStorage.setItem(FKEY, JSON.stringify(state.filters)); } catch (e) { /* private window */ }
+  }
+  function passes(r) {
+    const f = state.filters;
+    for (const [key, , test] of FILTERS) if (f[key] != null && !test(r, f[key])) return false;
+    if (f.rsHigh && r.rs_line_new_high !== undefined && !r.rs_line_new_high) return false;
+    return true;
+  }
+  const activeFilters = () => FILTERS.filter(([k]) => state.filters[k] != null).length + (state.filters.rsHigh ? 1 : 0);
+  const screenRows = (name) => (state.data.screens[name] || []).filter(passes);
 
   // column: [label, kind]  kind: txt | num | pct | signed | x | bool | int
   const COLS = {
@@ -56,7 +122,10 @@
   };
 
   const $ = (id) => document.getElementById(id);
-  const state = { data: null, screen: "VCP", sort: null, dir: -1, query: "", symbol: null, view: "table", perRow: 2 };
+  const state = { data: null, screen: "VCP", sort: null, dir: -1, query: "", symbol: null, view: "table", perRow: 2,
+                  stage: "All", filters: {}, showBases: true };
+  state.filters = loadFilters();
+  try { state.showBases = localStorage.getItem("ibs-bases") !== "0"; } catch (e) { /* private window */ }
   const chartCache = new Map();
 
   // ---------- formatting ----------
@@ -231,6 +300,17 @@
     setData(c, o = {}) {
       this.c = c; this.hover = -1; this.showSma10 = !!o.sma10 && !!c.sma10;
       this.ich = o.ichimoku ? computeIchimoku(c) : null;
+      // only the levels asked for; bases as boxes when wanted
+      this.levels = (c.levels || []).filter((lv) => !o.levels || o.levels.includes(lv.label));
+      this.bases = [];
+      if (o.bases && c.bases) {
+        const at = new Map(c.d.map((d, i) => [d, i]));
+        for (const b of c.bases) {
+          const e = at.get(b.e);
+          if (e === undefined) continue;
+          this.bases.push({ ...b, i0: at.has(b.s) ? at.get(b.s) : 0, i1: e });
+        }
+      }
       this.auto = true; this.reset(); this.emit();
     }
     clear() { this.c = null; this.draw(); }
@@ -415,7 +495,7 @@
             for (const v of [this.ich.cloudA[j], this.ich.cloudB[j]]) if (v != null) { lo = Math.min(lo, v); hi = Math.max(hi, v); }
           }
         }
-        for (const lv of c.levels || []) if (lv.price > lo * 0.92 && lv.price < hi * 1.08) { lo = Math.min(lo, lv.price); hi = Math.max(hi, lv.price); }
+        for (const lv of this.levels) if (lv.price > lo * 0.92 && lv.price < hi * 1.08) { lo = Math.min(lo, lv.price); hi = Math.max(hi, lv.price); }
         const L = this.fwd(lo), Hh = this.fwd(hi), pad = (Hh - L) * 0.07 || Math.abs(Hh) * 0.05;
         this.yLo = L - pad; this.yHi = Hh + pad;
       }
@@ -456,6 +536,21 @@
       // price pane (clipped)
       ctx.save(); ctx.beginPath(); ctx.rect(0, 0, plotW, priceH); ctx.clip();
       const lw = mini ? 1.1 : 1.4;
+      // bases: a shaded box from the starting high to the breakout (or to today
+      // while it is still forming), with the pivot along the top edge
+      const baseMarks = [];
+      for (const b of this.bases) {
+        if (b.i1 < i0 - 1 || b.i0 > i1 + 1) continue;
+        const x0 = X(b.i0) - step / 2, x1 = X(b.i1) + step / 2, yT = Y(b.p), yB = Y(b.l);
+        ctx.fillStyle = ink; ctx.globalAlpha = b.bo ? 0.06 : 0.09;
+        ctx.fillRect(x0, yT, x1 - x0, yB - yT);
+        ctx.globalAlpha = 1;
+        ctx.strokeStyle = up; ctx.lineWidth = 1.2; ctx.setLineDash([4, 3]);
+        const yy = Math.round(yT) + 0.5;
+        ctx.beginPath(); ctx.moveTo(x0, yy); ctx.lineTo(b.bo ? x1 : plotW, yy); ctx.stroke();
+        ctx.setLineDash([]);
+        baseMarks.push({ b, x0, x1, yT });
+      }
       if (this.ich) {
         const { tenkan, kijun, cloudA, cloudB, chikou } = this.ich;
         const j0 = Math.max(1, i0), j1 = Math.min(cloudA.length - 1, Math.ceil(this.end) + 1);
@@ -509,9 +604,24 @@
         }
       }
 
+      // base labels and breakout markers, drawn over the candles
+      for (const { b, x0, x1, yT } of baseMarks) {
+        ctx.fillStyle = b.bo ? ink3 : css("--up");
+        const text = b.bo ? b.t : `${b.t} · pivot ${mini ? fmtAxis(b.p) : "₹" + nf2.format(b.p)}`;
+        // keep the label inside the plot when the base sits against the right edge
+        const tx = Math.max(4, Math.min(x0 + 3, plotW - ctx.measureText(text).width - 6));
+        if (x1 - x0 > 28 || !b.bo) ctx.fillText(text, tx, Math.max(8, yT - 8));
+        if (b.bo) {   // green triangle over the breakout bar (hollow when it closed weak)
+          const x = X(b.i1), y = Y(c.h[b.i1]) - (mini ? 6 : 9), r = mini ? 3.5 : 5;
+          ctx.beginPath(); ctx.moveTo(x, y - r); ctx.lineTo(x + r, y + r * 0.8); ctx.lineTo(x - r, y + r * 0.8); ctx.closePath();
+          ctx.fillStyle = up; ctx.strokeStyle = up; ctx.lineWidth = 1.3;
+          b.sq ? ctx.stroke() : ctx.fill();
+        }
+      }
+
       // key levels: merge near-equal prices, stagger labels
       const merged = [];
-      for (const lv of (c.levels || []).slice().sort((a, b) => b.price - a.price)) {
+      for (const lv of this.levels.slice().sort((a, b) => b.price - a.price)) {
         const m = merged.find((x) => Math.abs(x.price - lv.price) / lv.price < 0.004);
         if (m) m.label += " / " + lv.label; else merged.push({ ...lv });
       }
@@ -697,6 +807,18 @@
 
     $("search").addEventListener("input", (e) => { state.query = e.target.value.trim().toLowerCase(); refreshList(); });
     $("closeChart").addEventListener("click", () => $("chartPanel").classList.remove("open"));
+    renderFilters();
+    const fn = activeFilters();
+    $("filterBtn").textContent = fn ? `Filters (${fn})` : "Filters";
+    $("filterBtn").classList.toggle("on", fn > 0);
+    $("filterBtn").addEventListener("click", () => {
+      const open = $("filters").hidden;
+      $("filters").hidden = !open;
+      $("filterBtn").setAttribute("aria-expanded", open ? "true" : "false");
+    });
+    $("filterReset").addEventListener("click", resetFilters);
+    $("basesBtn").setAttribute("aria-pressed", state.showBases ? "true" : "false");
+    $("basesBtn").addEventListener("click", () => setBases(!state.showBases));
     document.addEventListener("keydown", (e) => { if (e.key === "Escape") $("chartPanel").classList.remove("open"); });
     for (const b of document.querySelectorAll("[data-view]")) b.addEventListener("click", () => setView(b.dataset.view));
     for (const b of document.querySelectorAll("[data-per-row]")) b.addEventListener("click", () => setPerRow(+b.dataset.perRow));
@@ -730,7 +852,7 @@
     const nav = $("screens");
     nav.innerHTML = "";
     for (const name of ORDER) {
-      const rows = state.data.screens[name] || [];
+      const rows = screenRows(name);
       const b = document.createElement("button");
       b.className = "screen";
       b.setAttribute("role", "tab");
@@ -744,13 +866,14 @@
   function selectScreen(name, initial = false) {
     state.screen = name;
     state.sort = null;
+    state.stage = "All";
     for (const b of $("screens").children) b.setAttribute("aria-selected", b.dataset.screen === name ? "true" : "false");
     $("screenNote").textContent = SCREENS[name];
     $("pineGift").hidden = name !== "Murphy";
     if (name === "Murphy") loadPine();
     refreshList();
     if (state.view === "table") {
-      const rows = state.data.screens[name] || [];
+      const rows = currentRows();
       const keep = initial && state.symbol && rows.some((r) => r.symbol === state.symbol);
       if (keep) openStock(state.symbol, false);
       else if (rows.length && window.matchMedia("(min-width: 1081px)").matches) openStock(rows[0].symbol, false);
@@ -783,8 +906,73 @@
     for (const b of document.querySelectorAll("[data-per-row]")) b.setAttribute("aria-pressed", +b.dataset.perRow === n ? "true" : "false");
   }
 
+  // ---------- stages & filters ----------
+  function renderStages() {
+    const box = $("stages"), def = STAGES[state.screen];
+    box.innerHTML = "";
+    box.hidden = !def;
+    if (!def) return;
+    const rows = screenRows(state.screen);
+    const cards = [["All", "every stock on this screen", rows.length]]
+      .concat(def.list.map(([name, note]) => [name, note, rows.filter((r) => def.of(r) === name).length]));
+    for (const [name, note, n] of cards) {
+      const b = document.createElement("button");
+      b.type = "button"; b.className = "stage";
+      b.setAttribute("aria-pressed", state.stage === name ? "true" : "false");
+      b.innerHTML = `<span class="n">${n}</span><span class="name">${name}</span><span class="note">${note}</span>`;
+      b.addEventListener("click", () => selectStage(name));
+      box.appendChild(b);
+    }
+  }
+  function selectStage(name) {
+    state.stage = name;
+    refreshList();
+    if (state.view === "table") {
+      const rows = currentRows();
+      if (rows.length && !rows.some((r) => r.symbol === state.symbol) && window.matchMedia("(min-width: 1081px)").matches) openStock(rows[0].symbol, false);
+    }
+  }
+  function renderFilters() {
+    const box = $("filterFields");
+    box.innerHTML = "";
+    for (const [key, label] of FILTERS) {
+      const l = document.createElement("label");
+      l.innerHTML = `<span>${label}</span><input type="number" inputmode="decimal" min="0" step="any" data-filter="${key}" placeholder="Any">`;
+      const inp = l.querySelector("input");
+      if (state.filters[key] != null) inp.value = state.filters[key];
+      inp.addEventListener("input", () => {
+        const v = parseFloat(inp.value);
+        if (Number.isFinite(v)) state.filters[key] = v; else delete state.filters[key];
+        filtersChanged();
+      });
+      box.appendChild(l);
+    }
+    const l = document.createElement("label");
+    l.className = "check";
+    l.innerHTML = `<input type="checkbox" data-filter="rsHigh"><span>RS line at a 52-week high</span>`;
+    const cb = l.querySelector("input");
+    cb.checked = !!state.filters.rsHigh;
+    cb.addEventListener("change", () => { if (cb.checked) state.filters.rsHigh = true; else delete state.filters.rsHigh; filtersChanged(); });
+    box.appendChild(l);
+  }
+  function filtersChanged() {
+    saveFilters();
+    const n = activeFilters();
+    $("filterBtn").textContent = n ? `Filters (${n})` : "Filters";
+    $("filterBtn").classList.toggle("on", n > 0);
+    for (const b of $("screens").children) b.querySelector(".n").textContent = screenRows(b.dataset.screen).length;
+    refreshList();
+  }
+  function resetFilters() {
+    state.filters = {};
+    renderFilters();
+    filtersChanged();
+  }
+
   function currentRows() {
-    let list = (state.data.screens[state.screen] || []).slice();
+    let list = screenRows(state.screen);
+    const def = STAGES[state.screen];
+    if (def && state.stage !== "All") list = list.filter((r) => def.of(r) === state.stage);
     if (state.query) list = list.filter((r) => (r.symbol + " " + (r.industry || "")).toLowerCase().includes(state.query));
     if (state.sort) {
       const k = state.sort, dir = state.dir;
@@ -801,6 +989,7 @@
   function refreshList() {
     const all = state.data.screens[state.screen] || [];
     const list = currentRows();
+    renderStages();
     $("count").textContent = !all.length ? "" : list.length === all.length
       ? `${all.length} ${all.length === 1 ? "stock" : "stocks"}` : `${list.length} of ${all.length} stocks`;
     $("empty").hidden = all.length > 0;
@@ -932,8 +1121,23 @@
     $("sma10Legend").hidden = !(murphy && c.sma10);
     for (const el of document.querySelectorAll(".legend .k-ma")) el.hidden = ich;
     for (const el of document.querySelectorAll(".legend .k-ich")) el.hidden = !ich;
-    mainChart.setData(c, { sma10: murphy, ichimoku: ich });
+    mainChart.setData(c, chartOptions());
   }
+  // what the chart draws depends on the screen: its own key level only, and
+  // bases as boxes on the Base Breakout screen or whenever "Bases" is switched on
+  function chartOptions() {
+    const s = state.screen, lv = SCREEN_LEVEL[s];
+    return { sma10: s === "Murphy", ichimoku: s === "Ichimoku", levels: lv ? [lv] : [],
+             bases: s === "Base Breakout" || state.showBases };
+  }
+  function setBases(on) {
+    state.showBases = on;
+    try { localStorage.setItem("ibs-bases", on ? "1" : "0"); } catch (e) { /* private window */ }
+    $("basesBtn").setAttribute("aria-pressed", on ? "true" : "false");
+    if (state.symbol && mainChart.c) mainChart.setData(mainChart.c, chartOptions());
+    if (state.view === "charts") refreshList();
+  }
+
   function renderFund(c, row) {
     const f = c.fund || {}, box = $("fund");
     const pct = (v) => (v == null ? null : `${nf1.format(v)}%`);
@@ -980,7 +1184,7 @@
       case "VCP": return r.vcp_pivot != null ? `Pivot ₹${nf2.format(r.vcp_pivot)} (${signed(r.vcp_pct_from_pivot)}%), ${r.vcp_depths}` : "";
       case "Blue Sky": return r.ath != null ? `All-time high ₹${nf2.format(r.ath)} (${signed(r.pct_from_ath)}%)` : "";
       case "Murphy": return r.murphy_signal ? `${r.murphy_signal}, ${r.murphy_days_ago === 0 ? "today" : r.murphy_days_ago + "d ago"}, entry ₹${nf2.format(r.murphy_entry)}` : "";
-      case "Base Breakout": return r.base_pivot != null ? `${r.base_state} B${r.base_no}, pivot ₹${nf2.format(r.base_pivot)} (${signed(r.base_pct_from_pivot)}%), ${r.base_weeks}w${r.base_tags ? ", " + r.base_tags : ""}` : "";
+      case "Base Breakout": return r.base_pivot != null ? `${r.base_state}, B${r.base_no}, pivot ₹${nf2.format(r.base_pivot)} (${signed(r.base_pct_from_pivot)}%), ${r.base_weeks}w${r.base_tags ? ", " + r.base_tags : ""}` : "";
       case "Ichimoku": return r.ich_cloud_top != null ? `Cloud breakout ${r.ich_days_ago === 0 ? "today" : r.ich_days_ago + "d ago"}, cloud top ₹${nf2.format(r.ich_cloud_top)} (${signed(r.ich_pct_above_cloud)}%)` : "";
       case "Multi-Year Base": return r.myb_pivot != null ? `Old high ₹${nf2.format(r.myb_pivot)} held ${r.myb_base_years} years` : "";
       case "IPO Base": return r.ipo_high != null ? `Listing high ₹${nf2.format(r.ipo_high)} (${signed(r.ipo_pct_from_high)}%)` : "";
@@ -1003,7 +1207,7 @@
         card.querySelector('[data-act="in"]').addEventListener("click", () => pc.zoom(1 / 1.3));
         card.querySelector('[data-act="out"]').addEventListener("click", () => pc.zoom(1.3));
         card.querySelector('[data-act="reset"]').addEventListener("click", () => pc.reset());
-        loadChart(sym).then((c) => pc.setData(c, { sma10: state.screen === "Murphy", ichimoku: state.screen === "Ichimoku" }))
+        loadChart(sym).then((c) => pc.setData(c, chartOptions()))
           .catch(() => { card.querySelector(".card-note").textContent = "Chart data missing - it will appear after the next scan."; });
       }
     }, { rootMargin: "400px 0px" });
