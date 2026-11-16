@@ -29,7 +29,7 @@ sys.path.insert(0, ROOT)
 import india_base_scanner as ibs  # noqa: E402
 
 IST = timezone(timedelta(hours=5, minutes=30))
-CHART_BARS = 500
+CHART_BARS = 1260   # ~5 years of daily candles per chart
 
 
 def _clean(v):
@@ -190,7 +190,7 @@ RS_BENCHMARKS = {"NIFTY50": ["^NSEI"], "NIFTY500": ["^CRSLDX"],
                  "MIDCAP150": INDEX_TICKERS["MIDCAP150"], "SMALLCAP250": INDEX_TICKERS["SMALLCAP250"]}
 
 
-def write_benchmarks(out_dir: str, bars: int = 800) -> dict:
+def write_benchmarks(out_dir: str, bars: int = 1300) -> dict:
     """Daily closes of the indices the website can draw the RS line against."""
     out = {}
     for name, tickers in RS_BENCHMARKS.items():
