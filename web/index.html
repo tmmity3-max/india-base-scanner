@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>India Base Scanner – daily VCP, all-time-high and base breakout screens for NSE</title>
-  <meta name="description" content="Free, open-source daily screens for every liquid NSE stock: VCP, Blue Sky (all-time high), Murphy pullback, Base Breakout, Ichimoku cloud breakout, Multi-Year Base, IPO Base and Trend Template, with RS rating and zoomable charts. Updated after every close.">
+  <meta name="description" content="Free, open-source daily screens for every liquid NSE stock: VCP, Blue Sky (all-time high), Murphy pullback, Base Breakout, 50 EMA Pullback, Ichimoku, Multi-Year Base, IPO Base and Trend Template, with RS rating and zoomable charts. Updated after every close.">
   <meta property="og:title" content="India Base Scanner">
   <meta property="og:description" content="Today's VCP, all-time-high, Murphy pullback and base breakout setups across every liquid NSE stock. Free and open source.">
   <meta name="theme-color" content="#15233F">
@@ -62,6 +62,7 @@
         <span class="sr">Search stocks</span>
         <input id="search" type="search" placeholder="Filter by stock or industry" autocomplete="off">
       </label>
+      <div class="seg" id="mcapSeg" role="group" aria-label="Market cap"></div>
       <button type="button" class="filter-btn" id="filterBtn" aria-expanded="false" aria-controls="filters">Filters</button>
       <span id="count" class="count"></span>
       <div class="tool-right">
@@ -127,6 +128,7 @@
         <p class="hint">Scroll or pinch to zoom, drag to move. Drag or scroll the price scale to stretch it, and double-click it to auto-fit again. Double-click the chart to reset.</p>
         <div class="legend">
           <span id="sma10Legend" hidden><i class="k-sma10"></i>SMA 10</span>
+          <span id="ema50Legend" hidden><i class="k-ema50"></i>EMA 50</span>
           <span class="k-ma"><i class="k-sma50"></i>SMA 50</span>
           <span class="k-ma"><i class="k-sma150"></i>SMA 150</span>
           <span class="k-ma"><i class="k-sma200"></i>SMA 200</span>
@@ -181,12 +183,13 @@
         <div><dt>VCP</dt><dd>Passes the Trend Template, then at least two pullbacks in the last six months, each no deeper than the one before, the last under 12%, volume drying up, and price within 6% of the pivot (the high of the last pullback).</dd></div>
         <div><dt>Blue Sky</dt><dd>Within 3% of the all-time high, with at least three years of history and RS of 70 or more. No old buyers waiting to sell above.</dd></div>
         <div><dt>Murphy</dt><dd>John Murphy's positional trend-following. Weekly filter from completed weeks: price above a rising 40-week SMA. Then, within the last 5 sessions, a 10-day SMA crossing above the 50-day, a close above the last 4 full weeks' high, or a crossover confirmed by a 2-week breakout.</dd></div>
-        <div><dt>Base Breakout</dt><dd>A base starts at a swing high, the pivot. It counts once price has spent at least 3 weeks below that high with a pullback of 5% to 35%. A close above the pivot, while above the 50 and 200-day averages, is the breakout. Bases are numbered B1, B2 and so on, and the count restarts when a base undercuts the low of the one before. Listed: stocks with an RS rating of 65 or more and a market cap above ₹2,000 crore, in one of four stages. Forming: a base is in place and price is within 7% of the pivot. Fresh breakout: closed above the pivot in the last 5 sessions, still above it and no more than 7% beyond. Climbing: broke out up to 60 sessions ago and has not closed back under the pivot. Played out: broke out in that time but the breakout failed, meaning price has closed back under the pivot, whether straight away or weeks later. On the chart each base is a shaded box with its pivot along the top and a green triangle on the breakout bar. Tags: Sky (pivot is an all-time high), VCP (the last third of the base is tight on lower volume), Squat (the breakout bar closed in its lower 40%).</dd></div>
+        <div><dt>Base Breakout</dt><dd>A base starts at a swing high, the pivot. It counts once price has spent at least 3 weeks below that high with a pullback of 5% to 35%. A close above the pivot, while above the 50 and 200-day averages, is the breakout. Bases are numbered B1, B2 and so on, and the count restarts when a base undercuts the low of the one before. Listed: stocks with an RS rating of 65 or more, in one of four stages. Forming: a base is in place and price is within 7% of the pivot. Fresh breakout: closed above the pivot in the last 5 sessions, still above it and no more than 7% beyond. Climbing: broke out up to 60 sessions ago and has not closed back under the pivot. Played out: broke out in that time but the breakout failed, meaning price has closed back under the pivot, whether straight away or weeks later. On the chart each base is a shaded box with its pivot along the top and a green triangle on the breakout bar. Tags: Sky (pivot is an all-time high), VCP (the last third of the base is tight on lower volume), Squat (the breakout bar closed in its lower 40%).</dd></div>
         <div><dt>Ichimoku</dt><dd>Adaptive Ichimoku. The Tenkan, Kijun and Senkou B lengths (9 / 26 / 52) shorten by up to 40% when volatility is high and lengthen when it is low. A stock is listed when a bullish signal fired in the last 5 sessions and nothing bearish has fired since. The signals: a Tenkan cross above Kijun that passes the cloud-thickness, volume and Chikou checks with a confluence score of 50 or more; a close up through the cloud on volume at least 1.3 times its 20-day average; or a retest of the cloud edge within 10 sessions of a breakout. The chart also marks cloud twists, momentum divergences and flat-Kijun support and resistance zones, and draws the setup the last signal opened: entry, a stop under the Kijun and targets at 1.5, 2.5 and 4 times the risk. The rules follow the Adaptive Ichimoku Nexus indicator by WillyAlgoTrader at its default settings.</dd></div>
+        <div><dt>50 EMA Pullback</dt><dd>A leader resting on its 50-day EMA. RS rating of 80 or more; close above the 200-day average, with the 50 EMA above it and rising; ran at least 8% above the EMA at some point in the last 40 sessions; and now closes between 2% under and 3% over the EMA. Stages: At the 50 EMA (touched it in the last three sessions, or within 1%), Bouncing (touched it in the last five sessions and closed above the previous day's high), Approaching (within 3% and no touch yet).</dd></div>
         <div><dt>Multi-Year Base</dt><dd>The highest price was set two or more years ago and has not been beaten since. Price is now near or just above that old high.</dd></div>
         <div><dt>IPO Base</dt><dd>Listed within the last two years, has built a base at least 10 days long and no deeper than 35%, and is now within 8% of its post-listing high.</dd></div>
         <div><dt>RS rating</dt><dd>Weighted 12-month return, with the latest quarter counting double, ranked 1–99 against every liquid stock scanned.</dd></div>
-        <div><dt>Liquidity</dt><dd>Every screen only lists stocks priced at ₹50 or more with an average daily turnover of ₹1 crore or more over the last 50 sessions.</dd></div>
+        <div><dt>Liquidity and size</dt><dd>Every screen only lists stocks priced at ₹50 or more, with an average daily turnover of ₹1 crore or more over the last 50 sessions and a market cap of ₹500 crore or more. The market cap buttons above the table raise that to ₹1,000 or ₹2,000 crore. Market cap comes from Yahoo Finance; a stock it has no figure for is left out.</dd></div>
       </dl>
     </section>
     <section class="advisory" id="advisory" aria-labelledby="advTitle">

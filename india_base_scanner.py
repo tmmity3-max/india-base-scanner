@@ -320,6 +320,7 @@ class ScanConfig:
     # --- Liquidity filters (applied to every screen) ---
     min_price: float = 50.0               # ₹ (every screen)
     min_turnover_cr: float = 1.0          # 50-day avg traded value, ₹ crore/day
+    min_mcap_cr: float = 500.0            # market cap, ₹ crore (needs fundamentals; see apply_market_cap_filter)
 
     # --- Trend Template (Stage 2) ---
     min_rs: float = 70.0                  # RS rating 1-99 vs the scanned universe
@@ -373,7 +374,6 @@ class ScanConfig:
     base_max_below_pivot: float = 7.0     # % below pivot still listed as "forming"
     base_max_above_pivot: float = 7.0     # % above pivot still listed as a breakout
     base_min_rs: float = 65.0             # RS rating needed for the screen
-    base_min_mcap_cr: float = 2000.0      # market cap, ₹ crore (needs fundamentals; see apply_market_cap_filter)
     base_signal_days: int = 5             # a breakout is "fresh" for N sessions
     base_climb_days: int = 60             # after that it is "climbing" for up to N sessions
     base_squat_pct: float = 40.0          # breakout closing in the lower N% of its bar = squat
@@ -396,6 +396,15 @@ class ScanConfig:
     ich_signal_days: int = 5              # list signals from the last N sessions
     ich_show_closed_bars: int = 20        # keep a closed setup on the chart this long
     ich_bars: int = 700                   # history analysed (the first ~100 bars are warm-up)
+
+    # --- 50 EMA Pullback ---
+    pb_ema: int = 50
+    pb_min_rs: float = 80.0               # RS rating needed for the screen
+    pb_max_above: float = 3.0             # % above the EMA still counted as a pullback to it
+    pb_max_below: float = 2.0             # % the close may sit under the EMA
+    pb_lookback: int = 40                 # bars in which the stock must have been extended
+    pb_min_extension: float = 8.0         # % above the EMA it had reached in that time
+    pb_touch_days: int = 5                # sessions a touch of the EMA stays "recent"
 
     # --- Shared ---
     breakout_window: int = 5              # bars in which a breakout counts as "recent"
@@ -952,6 +961,52 @@ def ichimoku_chart(df: pd.DataFrame, cfg: ScanConfig, bars: int) -> Optional[dic
     return out
 
 
+def find_pullback(df: pd.DataFrame, cfg: ScanConfig) -> dict:
+    """A leader pulling back to its rising 50-day EMA.
+
+    The stock must be in an uptrend (close above the 200-day SMA, the 50 EMA
+    above the 200 SMA and higher than ten sessions ago), must have run at least
+    ``pb_min_extension`` above the EMA in the last ``pb_lookback`` bars, and
+    must now close between ``pb_max_below`` under and ``pb_max_above`` over it.
+    The RS floor (``pb_min_rs``) is applied in ``apply_screens``.
+
+    Stage: **Bouncing** when it touched the EMA in the last ``pb_touch_days``
+    sessions and today closed above yesterday's high; **At the 50 EMA** when it
+    touched the EMA in the last three sessions or is within 1% of it;
+    otherwise **Approaching**.
+    """
+    out = {"pullback": False, "pb_stage": "", "pb_ema50": np.nan, "pb_pct_from_ema": np.nan,
+           "pb_days_since_touch": np.nan, "pb_from_high": np.nan}
+    n = len(df)
+    if n < 200 + 11:
+        return out
+    c, h, l = df["Close"], df["High"].to_numpy(float), df["Low"].to_numpy(float)
+    ema = c.ewm(span=cfg.pb_ema, adjust=False).mean().to_numpy(float)
+    sma200 = float(c.tail(200).mean())
+    cv = c.to_numpy(float)
+    close, e = cv[-1], ema[-1]
+    dist = (close / e - 1) * 100
+    k = cfg.pb_lookback
+    out.update(pb_ema50=round(float(e), 2), pb_pct_from_ema=round(float(dist), 2),
+               pb_from_high=round(float(close / h[-k:].max() - 1) * 100, 2))
+    uptrend = close > sma200 and e > sma200 and e > ema[-11]
+    extended = float((h[-k:] / ema[-k:] - 1).max()) * 100 >= cfg.pb_min_extension
+    if not (uptrend and extended and -cfg.pb_max_below <= dist <= cfg.pb_max_above):
+        return out
+    touched = np.nonzero(l[-k:] <= ema[-k:] * 1.005)[0]          # low came within 0.5% of the EMA
+    since = int(k - 1 - touched[-1]) if len(touched) else None
+    if since is not None:
+        out["pb_days_since_touch"] = since
+    if since is not None and since <= cfg.pb_touch_days and close > h[-2] and close > e:
+        stage = "Bouncing"
+    elif (since is not None and since <= 2) or abs(dist) <= 1.0:
+        stage = "At the 50 EMA"
+    else:
+        stage = "Approaching"
+    out.update(pullback=True, pb_stage=stage)
+    return out
+
+
 def _base_from_high(df: pd.DataFrame, exclude_last: int) -> Tuple[float, int, float]:
     """Highest high before the last ``exclude_last`` bars, its bar index and
     the depth (%) of the lowest low after it."""
@@ -1219,6 +1274,9 @@ def analyze_stock(df: pd.DataFrame, cfg: ScanConfig,
 
     # --- Ichimoku cloud breakout ---
     m.update(find_ichimoku(df, cfg))
+
+    # --- 50 EMA Pullback ---
+    m.update(find_pullback(df, cfg))
     return m
 
 
@@ -1250,6 +1308,10 @@ SCREEN_COLUMNS = {
                  "ich_score", "ich_trend", "ich_momentum", "ich_cloud",
                  "ich_entry", "ich_sl", "ich_tp1", "vol_ratio", "rs_line_new_high", "turnover_cr",
                  "pct_from_52w_high", "pct_above_52w_low"],
+    "50 EMA Pullback": ["symbol", "industry", "close", "rs_rating", "pb_stage", "pb_ema50",
+                        "pb_pct_from_ema", "pb_days_since_touch", "pb_from_high", "vol_dryup",
+                        "vol_ratio", "rs_line_new_high", "turnover_cr", "pct_from_52w_high",
+                        "pct_above_52w_low"],
     "IPO Base": ["symbol", "industry", "close", "listed_days", "ipo_high",
                  "ipo_pct_from_high", "ipo_base_days", "ipo_depth", "vol_ratio",
                  "turnover_cr", "pct_from_52w_high", "pct_above_52w_low"],
@@ -1301,11 +1363,12 @@ def apply_screens(metrics: pd.DataFrame, cfg: ScanConfig) -> Dict[str, pd.DataFr
         "Murphy": liquid & m["murphy"],
         "Base Breakout": liquid & m["base_bo"] & (m["rs_rating"].fillna(0) >= cfg.base_min_rs),
         "Ichimoku": liquid & m["ichimoku"],
+        "50 EMA Pullback": liquid & m["pullback"] & (m["rs_rating"].fillna(0) >= cfg.pb_min_rs),
     }
     sort_by = {"Trend Template": "rs_rating", "VCP": "rs_rating", "Blue Sky": "rs_rating",
                "Multi-Year Base": "myb_base_years", "IPO Base": "ipo_base_days",
                "Murphy": "murphy_days_ago", "Base Breakout": "base_pct_from_pivot",
-               "Ichimoku": "ich_days_ago"}
+               "Ichimoku": "ich_days_ago", "50 EMA Pullback": "rs_rating"}
     ascending = {"Murphy": True, "Ichimoku": True}  # newest signals first
     out = {}
     for name, mask in masks.items():
@@ -1317,21 +1380,22 @@ def apply_screens(metrics: pd.DataFrame, cfg: ScanConfig) -> Dict[str, pd.DataFr
 
 
 def apply_market_cap_filter(result: "ScanResult", fund: Dict[str, dict]) -> "ScanResult":
-    """Drop Base Breakout rows below ``base_min_mcap_cr``, once fundamentals are known.
+    """Drop rows below ``min_mcap_cr`` from every screen, once fundamentals are known.
 
     Market cap comes from ``fetch_fundamentals``, which runs after the price
     scan, so this is a second pass. A stock whose market cap Yahoo did not
     return is dropped too. If no market caps came back at all, nothing is
-    filtered, so a failed fetch does not empty the screen.
+    filtered, so a failed fetch does not empty the screens.
     """
-    floor = result.config.base_min_mcap_cr
-    t = result.screens.get("Base Breakout")
-    if not floor or t is None or t.empty:
+    floor = result.config.min_mcap_cr
+    caps = {s: d.get("market_cap_cr") for s, d in (fund or {}).items()}
+    if not floor or not any(isinstance(v, (int, float)) and v == v for v in caps.values()):
         return result
-    cap = t["symbol"].map(lambda s: (fund or {}).get(s, {}).get("market_cap_cr"))
-    cap = pd.to_numeric(cap, errors="coerce")
-    if cap.notna().any():
-        result.screens["Base Breakout"] = t.loc[cap >= floor].reset_index(drop=True)
+    for name, t in result.screens.items():
+        if t.empty:
+            continue
+        cap = pd.to_numeric(t["symbol"].map(caps), errors="coerce")
+        result.screens[name] = t.loc[cap >= floor].reset_index(drop=True)
     return result
 
 
