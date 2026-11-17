@@ -175,6 +175,11 @@ def test_base_stages_after_breakout():
     df = make_series([(0, 100), (300, 200), (15, 176), (13, 198), (2, 225)], noise=0.002, seed=5)
     assert ibs.find_base(df, cfg)["base_state"] == "Climbing"
     assert set(ibs.BASE_STAGES) >= {"Forming", "Fresh breakout", "Climbing", "Played out"}
+    # broke out, dipped under the pivot for a day, ran up, now resting in a new
+    # base above the 50 EMA (like ROSSTECH on 16 Nov): Forming, not Played out
+    df = _after_breakout((1, 199), (25, 270), (20, 240))
+    out = ibs.find_base(df, cfg)
+    assert out["base_state"] == "Forming" and out["base_bo"] and out["base_pivot"] > 260, out
 
 
 def test_base_boxes():

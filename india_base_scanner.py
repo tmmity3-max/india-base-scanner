@@ -374,7 +374,7 @@ class ScanConfig:
     base_min_depth: float = 5.0           # % pullback needed to call it a base
     base_max_depth: float = 35.0          # deeper than this cancels the base
     base_trend_filter: bool = True        # breakout must close above the 50 and 200 SMA
-    base_max_below_pivot: float = 7.0     # % below pivot still listed as "forming"
+    base_forming_ema: int = 50            # a forming base is listed while the close is above this EMA
     base_max_above_pivot: float = 7.0     # % above pivot still listed as a breakout
     base_min_rs: float = 65.0             # RS rating needed for the screen
     base_signal_days: int = 5             # a breakout is "fresh" for N sessions
@@ -545,8 +545,10 @@ def _walk_bases(df: pd.DataFrame, cfg: ScanConfig) -> Tuple[dict, List[dict]]:
 
     * **Fresh breakout**: broke out in the last ``base_signal_days`` sessions,
       still above the pivot and no more than ``base_max_above_pivot`` beyond it.
-    * **Forming**: a base is in place and price is within
-      ``base_max_below_pivot`` of its pivot.
+    * **Forming**: a base is in place and the close is above the
+      ``base_forming_ema``-day EMA. This comes before an older breakout's stage,
+      so a stock resting in a new base is not shown as Climbing or Played out.
+      Under the EMA a forming base is not listed.
     * **Climbing**: broke out up to ``base_climb_days`` sessions ago and has not
       closed back below the pivot since.
     * **Played out**: broke out in that window but the breakout failed: price
@@ -565,6 +567,7 @@ def _walk_bases(df: pd.DataFrame, cfg: ScanConfig) -> Tuple[dict, List[dict]]:
     c = c_s.to_numpy(float)
     sma50 = c_s.rolling(50).mean().to_numpy(float)
     sma200 = c_s.rolling(200).mean().to_numpy(float)
+    ema_f = float(c_s.ewm(span=cfg.base_forming_ema, adjust=False).mean().iloc[-1])
     vol10 = v_s.rolling(10).mean().to_numpy(float)
     vol50 = v_s.rolling(50).mean().to_numpy(float)
     # all-time high before each bar, for the "Sky" tag
@@ -638,11 +641,13 @@ def _walk_bases(df: pd.DataFrame, cfg: ScanConfig) -> Tuple[dict, List[dict]]:
     held = last is not None and bool((c[last["i"]:] >= last["pivot"]).all())
     if last is not None and ago <= cfg.base_signal_days and held and gain <= cfg.base_max_above_pivot:
         fill(last, "Fresh breakout", int(ago))
-    elif forming is not None and (close / peak - 1) * 100 >= -cfg.base_max_below_pivot:
+    elif forming is not None and close >= ema_f:
+        # a new base, still above the EMA: that is the stock's stage, whatever
+        # happened to the breakout before it
         fill(forming, "Forming")
     elif last is not None and ago <= cfg.base_climb_days:
         fill(last, "Climbing" if held else "Played out", int(ago))
-    elif forming is not None:                    # a base, but too far under its pivot to list
+    elif forming is not None:                    # a base, but under the EMA: not listed
         fill(forming, "Forming")
         out["base_bo"] = False
     return out, bases

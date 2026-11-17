@@ -128,7 +128,7 @@ Close within `bluesky_max_below_ath` (3%) of the all-time high, at least 3 years
 3. A close above the pivot is the breakout. With `base_trend_filter` on, the close must also be above the 50 and 200-day SMAs.
 4. Bases are numbered B1, B2 and so on. The count restarts at 1 when a base undercuts the low of the base before it.
 5. Every listed stock is in one of four stages:
-   - **Forming**: a base is in place and price is within `base_max_below_pivot` (7%) of the pivot.
+   - **Forming**: a new base is in place and the close is above its 50-day EMA (`base_forming_ema`). A forming base always comes before an older breakout.
    - **Fresh breakout**: closed above the pivot in the last `base_signal_days` (5) sessions, still above it and no more than `base_max_above_pivot` (7%) beyond it.
    - **Climbing**: broke out up to `base_climb_days` (60) sessions ago and has not closed back under the pivot.
    - **Played out**: broke out in that time but the breakout failed: price has closed back under the pivot, whether straight away or weeks later.
