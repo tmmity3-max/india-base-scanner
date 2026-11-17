@@ -266,6 +266,14 @@ def main():
     data = ibs.download_prices(uni["symbol"], period=args.period)
     if len(data) < 0.5 * len(uni):
         sys.exit(f"Only {len(data)}/{len(uni)} stocks downloaded - aborting so the site keeps yesterday's data.")
+    # Yahoo sometimes leaves out the latest session for most stocks (seen on a
+    # late-night run): the scan would then use old candles under a new date.
+    last_days = pd.Series([df.index[-1].normalize() for df in data.values()])
+    newest = last_days.max()
+    fresh = (last_days == newest).mean()
+    print(f"Latest session {newest.date()}: {fresh:.0%} of stocks have it")
+    if fresh < 0.8:
+        sys.exit(f"Only {fresh:.0%} of stocks have the {newest.date()} candle - aborting so the site keeps the last good data.")
     bench = ibs.download_benchmark(args.benchmark, period=args.period)
     result = ibs.scan(data, ibs.ScanConfig(), uni, bench)
 
