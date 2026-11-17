@@ -267,7 +267,10 @@
     const n = c.c.length, src = c.ich || null, shift = src ? src.shift : 25;
     let tenkan, kijun, sa, sb;
     if (src) {
-      ({ tenkan, kijun } = src); sa = src.spanA; sb = src.spanB;
+      // the scan sends these lines for its last ~700 bars only; line them up
+      // with the end of the chart (which holds up to 5 years) by padding the front
+      const pad = (a) => (a.length < n ? new Array(n - a.length).fill(null).concat(a) : a.slice(a.length - n));
+      tenkan = pad(src.tenkan); kijun = pad(src.kijun); sa = pad(src.spanA); sb = pad(src.spanB);
     } else {
       const mid = (k) => {
         const out = new Array(n).fill(null);
