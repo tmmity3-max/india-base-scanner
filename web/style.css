@@ -146,7 +146,10 @@ main { padding: 0 clamp(16px, 2.2vw, 40px); }
 .chart-resize::after { content: ""; position: absolute; left: 50%; top: 4px; width: 48px; height: 3px; margin-left: -24px; border-radius: 3px; background: var(--grid); transition: background .15s; }
 .chart-resize:hover::after, .chart-resize:focus-visible::after, .chart-resize.dragging::after { background: var(--saffron); }
 body.resizing { user-select: none; }
-.list { min-width: 0; }
+.list { min-width: 0; position: relative; }
+/* a soft edge when more columns are hidden to the right: the table ends here, it is not under the chart */
+.list.more-right::after { content: ""; position: absolute; right: 1px; bottom: 1px; width: 28px; height: var(--wrap-h, 0); pointer-events: none;
+  border-radius: 0 10px 10px 0; background: linear-gradient(to right, transparent, rgba(0, 0, 0, .28)); }
 /* Stage cards: the groups inside a screen */
 .stages { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 16px; }
 .stages[hidden] { display: none; }
@@ -200,7 +203,11 @@ body.resizing { user-select: none; }
 .search input::placeholder { color: var(--ink-3); }
 .count { color: var(--ink-3); font-size: 13px; white-space: nowrap; }
 
-.table-wrap { overflow: auto; max-height: calc(100vh - 32px); background: var(--surface); border: 1px solid var(--grid); border-radius: 10px; }
+.table-wrap { overflow: auto; max-height: calc(100vh - 32px); background: var(--surface); border: 1px solid var(--grid); border-radius: 10px;
+  scrollbar-width: thin; scrollbar-color: var(--ink-3) transparent; }
+.table-wrap::-webkit-scrollbar { height: 10px; width: 10px; }
+.table-wrap::-webkit-scrollbar-thumb { background: var(--grid); border-radius: 6px; border: 2px solid var(--surface); }
+.table-wrap::-webkit-scrollbar-thumb:hover { background: var(--ink-3); }
 table { border-collapse: collapse; width: 100%; font-size: 12.5px; }
 thead th {
   position: sticky; top: 0; z-index: 1; background: var(--surface);
@@ -208,6 +215,15 @@ thead th {
   padding: 10px 12px; border-bottom: 1px solid var(--grid); cursor: pointer; user-select: none;
 }
 thead th:first-child, tbody td:first-child, thead th.txt, tbody td.txt { text-align: left; }
+/* Excel-style column resizing: a grip on each header's right edge */
+thead th { overflow: visible; }
+.col-grip { position: absolute; top: 0; right: -4px; width: 9px; height: 100%; cursor: col-resize; z-index: 3; touch-action: none; }
+.col-grip::after { content: ""; position: absolute; top: 20%; bottom: 20%; left: 4px; width: 1px; background: var(--grid); }
+.col-grip:hover::after, .col-grip.dragging::after { top: 0; bottom: 0; width: 2px; left: 3.5px; background: var(--saffron); }
+body.col-resizing, body.col-resizing * { cursor: col-resize !important; }
+table.fixed { table-layout: fixed; }
+table.fixed th, table.fixed td { overflow: hidden; text-overflow: ellipsis; }
+table.fixed th { overflow: visible; }
 thead th[aria-sort="ascending"]::after { content: " ▲"; font-size: 10px; }
 thead th[aria-sort="descending"]::after { content: " ▼"; font-size: 10px; }
 tbody td { padding: 6px 10px; border-bottom: 1px solid var(--grid); text-align: right; white-space: nowrap; }

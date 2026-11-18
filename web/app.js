@@ -247,6 +247,17 @@
     wrap.style.height = sideBySide ? `${panel.offsetHeight}px` : "";
     wrap.style.maxHeight = sideBySide ? "none" : "";
   }
+  // shadow on the table's right edge while columns are hidden past it
+  function edgeHint() {
+    const wrap = document.querySelector(".table-wrap"), list = document.querySelector(".list");
+    if (!wrap || !list) return;
+    const more = wrap.scrollWidth - wrap.clientWidth - wrap.scrollLeft > 4;
+    list.classList.toggle("more-right", more);
+    list.style.setProperty("--wrap-h", `${wrap.offsetHeight - 2}px`);
+  }
+  document.querySelector(".table-wrap").addEventListener("scroll", edgeHint, { passive: true });
+  new ResizeObserver(edgeHint).observe(document.querySelector(".table-wrap"));
+  new ResizeObserver(edgeHint).observe($("table"));
   new ResizeObserver(syncHeights).observe($("chartPanel"));
   window.addEventListener("resize", syncHeights);
 
@@ -1238,6 +1249,13 @@
       };
       th.addEventListener("click", sortBy);
       th.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); sortBy(); } });
+      th.dataset.col = c;
+      const grip = document.createElement("span");          // drag the right edge, like Excel
+      grip.className = "col-grip"; grip.title = "Drag to resize · double-click to fit";
+      grip.addEventListener("click", (e) => e.stopPropagation());
+      grip.addEventListener("pointerdown", (e) => startColResize(e, th));
+      grip.addEventListener("dblclick", (e) => { e.stopPropagation(); setColWidth(c, 0); refreshList(); });
+      th.appendChild(grip);
       tr.appendChild(th);
     }
     thead.appendChild(tr);
@@ -1267,6 +1285,62 @@
       frag.appendChild(row);
     }
     tbody.appendChild(frag);
+    applyColWidths();
+  }
+
+  // ---------- column widths (drag a header's right edge, like Excel) ----------
+  // Widths are kept per screen in this browser. Once any column on a screen
+  // has a width of its own, the table switches to fixed layout: every column
+  // keeps the width it had, long text is cut with "…", and the table can be
+  // wider (scroll sideways) or narrower than the panel.
+  const CWKEY = "ibs-col-widths";
+  function colWidths() {
+    try { return (JSON.parse(localStorage.getItem(CWKEY) || "{}") || {})[state.screen] || {}; } catch (e) { return {}; }
+  }
+  function setColWidth(col, w) {
+    let all = {};
+    try { all = JSON.parse(localStorage.getItem(CWKEY) || "{}") || {}; } catch (e) { /* ignore */ }
+    const mine = all[state.screen] || {};
+    if (w) mine[col] = Math.round(w); else delete mine[col];
+    if (Object.keys(mine).length) all[state.screen] = mine; else delete all[state.screen];
+    try { localStorage.setItem(CWKEY, JSON.stringify(all)); } catch (e) { /* private window */ }
+  }
+  function applyColWidths() {
+    const table = $("table"), ths = [...table.tHead.querySelectorAll("th")], saved = colWidths();
+    table.classList.remove("fixed"); table.style.width = "";
+    for (const th of ths) th.style.width = "";
+    if (!Object.keys(saved).length) return;               // natural widths
+    const natural = ths.map((th) => Math.ceil(th.getBoundingClientRect().width) + 2);   // slack so text is not cut by rounding
+    let sum = 0;
+    ths.forEach((th, i) => {
+      const w = saved[th.dataset.col] || natural[i];
+      th.style.width = `${w}px`; sum += w;
+    });
+    table.style.width = `${sum}px`;
+    table.classList.add("fixed");
+  }
+  function startColResize(e, th) {
+    if (e.button !== 0) return;
+    e.preventDefault(); e.stopPropagation();
+    const table = $("table"), ths = [...table.tHead.querySelectorAll("th")];
+    if (!table.classList.contains("fixed")) {              // freeze the current widths first
+      let sum = 0;
+      const ws = ths.map((h) => Math.ceil(h.getBoundingClientRect().width) + 2);
+      ths.forEach((h, i) => { h.style.width = `${ws[i]}px`; sum += ws[i]; });
+      table.style.width = `${sum}px`; table.classList.add("fixed");
+    }
+    const grip = e.target, x0 = e.clientX, w0 = th.offsetWidth, t0 = table.offsetWidth;
+    grip.setPointerCapture(e.pointerId); grip.classList.add("dragging"); document.body.classList.add("resizing", "col-resizing");
+    const move = (ev) => {
+      const w = Math.max(40, Math.min(600, w0 + ev.clientX - x0));
+      th.style.width = `${w}px`; table.style.width = `${t0 + w - w0}px`;
+    };
+    const up = () => {
+      grip.classList.remove("dragging"); document.body.classList.remove("resizing", "col-resizing");
+      grip.removeEventListener("pointermove", move); grip.removeEventListener("pointerup", up); grip.removeEventListener("pointercancel", up);
+      setColWidth(th.dataset.col, th.offsetWidth);
+    };
+    grip.addEventListener("pointermove", move); grip.addEventListener("pointerup", up); grip.addEventListener("pointercancel", up);
   }
 
   // ---------- big chart ----------
