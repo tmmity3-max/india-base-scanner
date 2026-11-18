@@ -104,7 +104,8 @@ def test_episodic_pivot():
     assert m["ep_gap"] >= 7.9 and m["ep_rvol"] >= 5 and m["ep_neglected"]
     assert ibs.find_ep(ep_stock(days_ago=0), cfg)["ep_days_ago"] == 0
     # outside the 3-session window, on normal volume, or broke the EP day's low: no EP
-    assert not ibs.find_ep(ep_stock(days_ago=4), cfg)["ep"]
+    assert ibs.find_ep(ep_stock(days_ago=15), cfg)["ep_days_ago"] == 15   # within the month
+    assert not ibs.find_ep(ep_stock(days_ago=25), cfg)["ep"]                # older than 21 sessions
     assert not ibs.find_ep(ep_stock(vol_mult=1.5), cfg)["ep"]
     assert not ibs.find_ep(ep_stock(days_ago=2, after=0.9), cfg)["ep"]
     # no real gap but a well above-average day (+4% vs a ~1% usual range): a "Big move"

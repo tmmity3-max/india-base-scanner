@@ -17,7 +17,7 @@
     "Base Breakout": "Numbered bases with a pivot: at least 3 weeks below a high with a 5–35% pullback. Pick a stage: forming, fresh breakout, climbing or played out. RS 65 or more.",
     "Ichimoku": "Adaptive Ichimoku: a bullish signal in the last 5 sessions (a scored Tenkan/Kijun cross, a cloud breakout on volume, or a retest of the cloud) with nothing bearish since. Newest first.",
     "50 EMA Pullback": "Leaders resting on their 50-day EMA: RS 80 or more, in an uptrend, ran at least 8% above the EMA in the last 40 sessions and now back within 3% of it. Strongest RS first.",
-    "Episodic Pivot": "Pradeep Bonde's EP: in the last 3 sessions the stock gapped up or made a well above-average move on at least 3× its usual volume (earnings or other news), and is still above that day's low. Newest first, heaviest volume first.",
+    "Episodic Pivot": "Pradeep Bonde's EP: in the last month the stock gapped up or made a well above-average move on at least 3× its usual volume (earnings or other news), and is still above that day's low. Newest first, heaviest volume first.",
     "IPO Base": "Recent listings basing just under their post-listing high.",
     "Trend Template": "Every liquid stock in a Stage-2 uptrend with RS 70 or more. The pool the VCP screen draws from.",
   };
@@ -54,9 +54,9 @@
              ["Approaching", "within 3% and still coming down"]],
     },
     "Episodic Pivot": {
-      of: (r) => (r.ep_days_ago === 0 ? "Today" : r.ep_days_ago === 1 ? "Yesterday" : "2 sessions ago"),
-      list: [["Today", "the EP day is the latest bar"], ["Yesterday", "EP day one session ago, still holding"],
-             ["2 sessions ago", "still above the EP day's low"]],
+      of: (r) => (r.ep_days_ago === 0 ? "Today" : r.ep_days_ago <= 4 ? "This week" : "This month"),
+      list: [["Today", "the EP day is the latest bar"], ["This week", "EP day in the last 5 sessions, still holding"],
+             ["This month", "EP day in the last month, still above its low"]],
     },
     "IPO Base": {
       of: (r) => (r.ipo_pct_from_high >= 0 ? "Above the listing high" : "Under the listing high"),

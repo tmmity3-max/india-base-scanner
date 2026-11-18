@@ -13,7 +13,7 @@ Screens
 3. Blue Sky        - Price at / breaking out to an all-time high.
 4. Episodic Pivot  - Pradeep Bonde style: a gap up or an above-average move
                      on abnormal volume (earnings or other news) in the
-                     last 3 sessions, still holding above that day's low.
+                     last month (21 sessions), still holding above that day's low.
 5. IPO Base        - Recent listings basing near their post-listing high.
 6. Murphy          - John Murphy's positional trend-following ("Technical
                      Analysis of the Financial Markets"): price above a rising
@@ -348,7 +348,7 @@ class ScanConfig:
     bluesky_min_history_years: float = 3.0
 
     # --- Episodic Pivot (Pradeep Bonde) ---
-    ep_window: int = 3                    # the EP day is one of the last N sessions
+    ep_window: int = 21                   # the EP day is one of the last N sessions (~1 month)
     ep_min_gap: float = 3.0               # % gap up at the open (and still up this much at the close)
     ep_min_move: float = 4.0              # or a day's gain of at least this %...
     ep_move_adr_mult: float = 2.0         # ...and at least this x the 20-day average daily range

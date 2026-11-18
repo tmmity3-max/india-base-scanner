@@ -24,7 +24,7 @@ Updated automatically after every market close: VCP, Blue Sky, Murphy trend-foll
 | **Base Breakout** | Numbered bases (B1, B2, …) with a pivot: 3+ weeks below a high with a 5–35% pullback. Four stages: forming, fresh breakout, climbing, played out. RS ≥ 65 |
 | **50 EMA Pullback** | Leaders (RS ≥ 80) in an uptrend that ran 8%+ above the 50-day EMA and are now back within 3% of it |
 | **Ichimoku** | Adaptive Ichimoku: a scored Tenkan/Kijun cross, a cloud breakout on volume, or a cloud retest in the last 5 sessions, with an entry, stop and targets |
-| **Episodic Pivot** | Pradeep Bonde style: a **gap up or well above-average move on 3×+ volume** (earnings or other news) in the last 3 sessions, still above that day's low |
+| **Episodic Pivot** | Pradeep Bonde style: a **gap up or well above-average move on 3×+ volume** (earnings or other news) in the last month, still above that day's low |
 | **IPO Base** | Recent listings basing just under their post-listing high |
 | **Murphy** | John Murphy's positional trend-following: above a rising 40-week SMA, then a fresh 10/50 crossover, 4-week-rule breakout, or crossover + 2-week breakout |
 
@@ -173,7 +173,7 @@ A leader resting on its rising 50-day EMA.
 <details>
 <summary><b>Episodic Pivot</b></summary>
 
-After Pradeep Bonde's Episodic Pivot: new information (earnings, an order, a policy change, any news) makes the market reprice a stock quickly, and abnormal volume is its footprint. An EP day is one of the last `ep_window` (3) sessions where the stock
+After Pradeep Bonde's Episodic Pivot: new information (earnings, an order, a policy change, any news) makes the market reprice a stock quickly, and abnormal volume is its footprint. An EP day is one of the last `ep_window` (21) sessions, about a month, where the stock
 
 - gapped up at least `ep_min_gap` (3%) and still closed that much higher, **or** gained at least `ep_min_move` (4%) and `ep_move_adr_mult` (2) × its 20-day average daily range;
 - traded at least `ep_min_rvol` (3) × its 50-day average volume and `ep_min_turnover_cr` (₹5 crore);
