@@ -250,6 +250,54 @@
   new ResizeObserver(syncHeights).observe($("chartPanel"));
   window.addEventListener("resize", syncHeights);
 
+  // Drag handles: the bar between the table and the chart sets the chart
+  // panel's width, the bar under the chart sets its height. Both are kept in
+  // this browser; double-click a bar to go back to the default size.
+  (function resizers() {
+    const ws = $("workspace"), split = $("splitter"), grip = $("chartResize"), canvas = $("chart");
+    if (!ws || !split || !grip || !canvas) return;
+    const load = (k) => { try { return +localStorage.getItem(k) || 0; } catch (e) { return 0; } };
+    const save = (k, v) => { try { v ? localStorage.setItem(k, String(Math.round(v))) : localStorage.removeItem(k); } catch (e) { /* private window */ } };
+    const setW = (w) => {
+      if (!w) { ws.style.removeProperty("--chart-w"); return; }
+      const max = Math.max(360, ws.clientWidth - 320);
+      ws.style.setProperty("--chart-w", `${Math.round(Math.min(Math.max(w, 360), max))}px`);
+    };
+    const wide = () => window.matchMedia("(min-width: 1081px)").matches;   // side-by-side layout only
+    const setH = (h) => { canvas.style.height = h && wide() ? `${Math.round(Math.min(Math.max(h, 260), 1600))}px` : ""; };
+    setW(load("ibs-chart-w")); setH(load("ibs-chart-h"));
+
+    function drag(el, onMove, onEnd) {
+      el.addEventListener("pointerdown", (e) => {
+        if (e.button !== 0) return;
+        e.preventDefault(); el.setPointerCapture(e.pointerId);
+        el.classList.add("dragging"); document.body.classList.add("resizing");
+        const move = (ev) => onMove(ev);
+        const up = () => {
+          el.classList.remove("dragging"); document.body.classList.remove("resizing");
+          el.removeEventListener("pointermove", move); el.removeEventListener("pointerup", up); el.removeEventListener("pointercancel", up);
+          onEnd();
+        };
+        el.addEventListener("pointermove", move); el.addEventListener("pointerup", up); el.addEventListener("pointercancel", up);
+      });
+    }
+    const panel = $("chartPanel");
+    drag(split, (e) => setW(ws.getBoundingClientRect().right - e.clientX - 7), () => save("ibs-chart-w", panel.offsetWidth));
+    drag(grip, (e) => setH(e.clientY - canvas.getBoundingClientRect().top), () => save("ibs-chart-h", canvas.offsetHeight));
+    split.addEventListener("dblclick", () => { setW(0); save("ibs-chart-w", 0); });
+    grip.addEventListener("dblclick", () => { setH(0); save("ibs-chart-h", 0); });
+    // keyboard: arrow keys nudge by 40px
+    split.addEventListener("keydown", (e) => {
+      if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+      e.preventDefault(); setW(panel.offsetWidth + (e.key === "ArrowLeft" ? 40 : -40)); save("ibs-chart-w", panel.offsetWidth);
+    });
+    grip.addEventListener("keydown", (e) => {
+      if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+      e.preventDefault(); setH(canvas.offsetHeight + (e.key === "ArrowDown" ? 40 : -40)); save("ibs-chart-h", canvas.offsetHeight);
+    });
+    window.addEventListener("resize", () => { setW(load("ibs-chart-w")); setH(load("ibs-chart-h")); });
+  })();
+
   async function loadChart(sym) {
     if (chartCache.has(sym)) return chartCache.get(sym);
     const v = state.data ? state.data.data_date : "";
