@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- New **Episodic Pivot** screen (after Pradeep Bonde) replaces Multi-Year Base: a gap up or well above-average move on 3×+ volume in the last 3 sessions, still above that day's low, tagged Earnings or News / volume and Neglected. On the website, in the notebook and in the Excel export.
 - Base Breakout: a stock resting in a new base is now listed as **Forming** while it holds above its 50-day EMA, however far it is under the new pivot. Before, it could show as Played out or Climbing because of its previous breakout.
 - New **50 EMA Pullback** screen: leaders with RS 80+ in an uptrend that ran well above their 50-day EMA and have come back to it, in three stages (at the EMA, bouncing, approaching).
 - Every screen now needs a market cap of ₹500 crore or more (`min_mcap_cr`). The Base Breakout screen's own ₹2,000 crore floor is gone; on the website, market cap buttons raise the floor to ₹1,000 or ₹2,000 crore for all screens.

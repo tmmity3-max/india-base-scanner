@@ -11,7 +11,9 @@ Screens
 2. VCP             - Volatility Contraction Pattern: successively tighter
                      pullbacks with volume drying up, near the pivot.
 3. Blue Sky        - Price at / breaking out to an all-time high.
-4. Multi-Year Base - Breaking out of a high that held for 2+ years.
+4. Episodic Pivot  - Pradeep Bonde style: a gap up or an above-average move
+                     on abnormal volume (earnings or other news) in the
+                     last 3 sessions, still holding above that day's low.
 5. IPO Base        - Recent listings basing near their post-listing high.
 6. Murphy          - John Murphy's positional trend-following ("Technical
                      Analysis of the Financial Markets"): price above a rising
@@ -197,7 +199,7 @@ def download_prices(
 
     Returns ``{symbol: DataFrame}``. Symbols that fail are skipped.
     ``period='max'`` is needed for the Blue Sky (all-time-high) and
-    Multi-Year screens; ``'5y'`` is faster if you only need VCP.
+    IPO screens; ``'5y'`` is faster if you only need VCP.
     """
     import yfinance as yf
 
@@ -345,11 +347,15 @@ class ScanConfig:
     bluesky_max_below_ath: float = 3.0    # % below all-time high
     bluesky_min_history_years: float = 3.0
 
-    # --- Multi-Year Base ---
-    myb_min_base_years: float = 2.0       # years the old high held
-    myb_max_below_pivot: float = 5.0
-    myb_max_above_pivot: float = 10.0
-    myb_max_depth: float = 60.0           # % from old high to base low
+    # --- Episodic Pivot (Pradeep Bonde) ---
+    ep_window: int = 3                    # the EP day is one of the last N sessions
+    ep_min_gap: float = 3.0               # % gap up at the open (and still up this much at the close)
+    ep_min_move: float = 4.0              # or a day's gain of at least this %...
+    ep_move_adr_mult: float = 2.0         # ...and at least this x the 20-day average daily range
+    ep_min_rvol: float = 3.0              # EP-day volume vs the 50-day average before it
+    ep_min_turnover_cr: float = 5.0       # ₹ crore traded on the EP day
+    ep_min_close_pos: float = 0.5         # close in the upper part of the day's range (0 = low, 1 = high)
+    ep_neglect_max_3m: float = 10.0       # "Neglected" tag: up no more than this % in the 3 months before
 
     # --- IPO Base ---
     ipo_min_days: int = 20                # trading days since listing
@@ -969,6 +975,94 @@ def ichimoku_chart(df: pd.DataFrame, cfg: ScanConfig, bars: int) -> Optional[dic
     return out
 
 
+def find_ep(df: pd.DataFrame, cfg: ScanConfig) -> dict:
+    """Episodic Pivot: new information forces a quick repricing (Pradeep Bonde).
+
+    An *EP day* is one of the last ``ep_window`` sessions where the stock
+
+    * gapped up at least ``ep_min_gap`` % and still closed that much higher, or
+      gained at least ``ep_min_move`` % and ``ep_move_adr_mult`` x its usual
+      daily range (an above-average move);
+    * traded ``ep_min_rvol`` x its 50-day average volume and at least
+      ``ep_min_turnover_cr`` crore. Abnormal volume is the catalyst's footprint
+      (earnings, an order, a policy change, any news), the idea behind EP 9M;
+    * closed in the upper part of the day's range (``ep_min_close_pos``).
+
+    It must still be holding: no close below the EP day's low since. The most
+    recent EP day counts. Tagged "Neglected" when the stock had done little
+    in the three months before (the classic EP context). Whether the day was
+    an earnings day is added later by the daily scan (``ep_catalyst``).
+    """
+    out = {"ep": False, "ep_date": "", "ep_days_ago": np.nan, "ep_type": "", "ep_gap": np.nan,
+           "ep_chg": np.nan, "ep_rvol": np.nan, "ep_low": np.nan, "ep_pct_since": np.nan,
+           "ep_neglected": False, "ep_catalyst": ""}
+    n = len(df)
+    if n < 60:
+        return out
+    o, h, l, c = (df[k].to_numpy(float) for k in ("Open", "High", "Low", "Close"))
+    v = df["Volume"].fillna(0).to_numpy(float)
+    adr = (h / l - 1) * 100
+    for k in range(min(cfg.ep_window, n - 52)):
+        d = n - 1 - k
+        pc = c[d - 1]
+        if not pc > 0:
+            continue
+        gap = (o[d] / pc - 1) * 100
+        chg = (c[d] / pc - 1) * 100
+        avg_v = v[d - 50:d].mean()
+        rvol = v[d] / avg_v if avg_v > 0 else np.nan
+        adr20 = np.nanmean(adr[d - 20:d])
+        rng = h[d] - l[d]
+        pos = (c[d] - l[d]) / rng if rng > 0 else 1.0
+        gapped = gap >= cfg.ep_min_gap and chg >= cfg.ep_min_gap
+        big = chg >= max(cfg.ep_min_move, cfg.ep_move_adr_mult * adr20)
+        if not ((gapped or big) and rvol == rvol and rvol >= cfg.ep_min_rvol
+                and c[d] * v[d] / 1e7 >= cfg.ep_min_turnover_cr and pos >= cfg.ep_min_close_pos):
+            continue
+        if (c[d:] < l[d]).any():                 # broke the EP day's low since: not holding
+            continue
+        ret3m = (pc / c[max(0, d - 64)] - 1) * 100
+        out.update(ep=True, ep_date=df.index[d].strftime("%Y-%m-%d"), ep_days_ago=k,
+                   ep_type="Gap up" if gapped else "Big move", ep_gap=round(gap, 2),
+                   ep_chg=round(chg, 2), ep_rvol=round(rvol, 1), ep_low=round(l[d], 2),
+                   ep_pct_since=round((c[-1] / c[d] - 1) * 100, 2),
+                   ep_neglected=bool(ret3m <= cfg.ep_neglect_max_3m))
+        break
+    return out
+
+
+def earnings_on(ep_date: str, dates) -> bool:
+    """True when an earnings date falls on the EP day or up to 4 days before it
+    (Indian results often come out after the close, so the reaction is the next session)."""
+    if not ep_date:
+        return False
+    d = pd.Timestamp(ep_date).normalize()
+    for x in dates or []:
+        try:
+            gap = (d - pd.Timestamp(x).tz_localize(None).normalize()).days
+        except TypeError:
+            gap = (d - pd.Timestamp(x).normalize()).days
+        if 0 <= gap <= 4:
+            return True
+    return False
+
+
+def fetch_earnings_dates(symbols: Iterable[str], suffix: str = ".NS", workers: int = 4) -> Dict[str, list]:
+    """Recent earnings dates from Yahoo Finance, best effort (Yahoo's NSE coverage is patchy)."""
+    from concurrent.futures import ThreadPoolExecutor
+    import yfinance as yf
+
+    def one(sym):
+        try:
+            ed = yf.Ticker(sym + suffix).get_earnings_dates(limit=8)
+            return sym, [] if ed is None or ed.empty else list(ed.index)
+        except Exception:
+            return sym, []
+
+    with ThreadPoolExecutor(max_workers=workers) as ex:
+        return dict(ex.map(one, list(dict.fromkeys(symbols))))
+
+
 def find_pullback(df: pd.DataFrame, cfg: ScanConfig) -> dict:
     """A leader pulling back to its rising 50-day EMA.
 
@@ -1247,18 +1341,8 @@ def analyze_stock(df: pd.DataFrame, cfg: ScanConfig,
         and -m["pct_from_ath"] <= cfg.bluesky_max_below_ath
     )
 
-    # --- Multi-Year Base ---
-    pivot, pi, depth = _base_from_high(df, exclude_last=k)
-    base_days = (n - 1 - pi) if pi >= 0 else 0
-    dist = (close / pivot - 1) * 100 if pivot == pivot else np.nan
-    m.update(myb_pivot=round(pivot, 2), myb_base_years=round(base_days / 252, 1),
-             myb_depth=round(depth, 1), myb_pct_from_pivot=round(dist, 2))
-    m["multiyear_base"] = bool(
-        pi >= 0
-        and base_days >= cfg.myb_min_base_years * 252
-        and depth <= cfg.myb_max_depth
-        and -cfg.myb_max_below_pivot <= dist <= cfg.myb_max_above_pivot
-    )
+    # --- Episodic Pivot ---
+    m.update(find_ep(df, cfg))
 
     # --- IPO Base ---
     m["ipo_base"] = False
@@ -1301,9 +1385,10 @@ SCREEN_COLUMNS = {
             "vol_dryup", "vol_ratio", "rs_line_new_high", "turnover_cr", "pct_from_52w_high", "pct_above_52w_low"],
     "Blue Sky": ["symbol", "industry", "close", "rs_rating", "ath", "pct_from_ath",
                  "new_ath_recent", "vol_ratio", "rs_line_new_high", "turnover_cr", "pct_from_52w_high", "pct_above_52w_low"],
-    "Multi-Year Base": ["symbol", "industry", "close", "rs_rating", "myb_pivot",
-                        "myb_pct_from_pivot", "myb_base_years", "myb_depth",
-                        "vol_ratio", "turnover_cr", "pct_from_52w_high", "pct_above_52w_low"],
+    "Episodic Pivot": ["symbol", "industry", "close", "rs_rating", "ep_date", "ep_days_ago",
+                       "ep_type", "ep_catalyst", "ep_gap", "ep_chg", "ep_rvol", "ep_low",
+                       "ep_pct_since", "ep_neglected", "turnover_cr", "pct_from_52w_high",
+                       "pct_above_52w_low"],
     "Murphy": ["symbol", "industry", "close", "rs_rating", "murphy_signal",
                "murphy_signal_date", "murphy_days_ago", "murphy_entry",
                "murphy_pct_from_entry", "murphy_sma40w",
@@ -1366,7 +1451,7 @@ def apply_screens(metrics: pd.DataFrame, cfg: ScanConfig) -> Dict[str, pd.DataFr
         "Trend Template": trend,
         "VCP": trend & m["vcp"],
         "Blue Sky": liquid & m["bluesky"] & (m["rs_rating"].fillna(0) >= cfg.min_rs),
-        "Multi-Year Base": liquid & m["multiyear_base"],
+        "Episodic Pivot": liquid & m["ep"],
         "IPO Base": liquid & m["ipo_base"],
         "Murphy": liquid & m["murphy"],
         "Base Breakout": liquid & m["base_bo"] & (m["rs_rating"].fillna(0) >= cfg.base_min_rs),
@@ -1374,10 +1459,11 @@ def apply_screens(metrics: pd.DataFrame, cfg: ScanConfig) -> Dict[str, pd.DataFr
         "50 EMA Pullback": liquid & m["pullback"] & (m["rs_rating"].fillna(0) >= cfg.pb_min_rs),
     }
     sort_by = {"Trend Template": "rs_rating", "VCP": "rs_rating", "Blue Sky": "rs_rating",
-               "Multi-Year Base": "myb_base_years", "IPO Base": "ipo_base_days",
+               "Episodic Pivot": ["ep_days_ago", "ep_rvol"], "IPO Base": "ipo_base_days",
                "Murphy": "murphy_days_ago", "Base Breakout": "base_pct_from_pivot",
                "Ichimoku": "ich_days_ago", "50 EMA Pullback": "rs_rating"}
-    ascending = {"Murphy": True, "Ichimoku": True}  # newest signals first
+    ascending = {"Murphy": True, "Ichimoku": True,   # newest signals first
+                 "Episodic Pivot": [True, False]}   # newest first, then heaviest volume
     out = {}
     for name, mask in masks.items():
         cols = [c for c in SCREEN_COLUMNS[name] if c in m.columns]
@@ -1503,7 +1589,7 @@ def plot_stock(symbol: str, data: Dict[str, pd.DataFrame], result: Optional[Scan
             if tags:
                 title += "   [" + ", ".join(tags) + "]"
             for key, flag, lbl, c in (("vcp_pivot", "vcp", "VCP pivot", "#e66101"),
-                                      ("myb_pivot", "multiyear_base", "Multi-year high", "#5e3c99"),
+                                      ("ep_low", "ep", "EP day low", "#5e3c99"),
                                       ("ipo_high", "ipo_base", "IPO high", "#008837"),
                                       ("murphy_entry", "murphy", "Murphy entry", "#b2182b")):
                 val = r.get(key, np.nan)

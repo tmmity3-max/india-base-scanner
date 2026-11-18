@@ -80,7 +80,7 @@ def chart_payload(sym: str, df: pd.DataFrame, result: ibs.ScanResult, fund: dict
     row = result.metrics.loc[result.metrics["symbol"] == sym].iloc[0]
     levels = []
     for key, flag, label in (("vcp_pivot", "vcp", "VCP pivot"),
-                             ("myb_pivot", "multiyear_base", "Multi-year high"),
+                             ("ep_low", "ep", "EP day low"),
                              ("ipo_high", "ipo_base", "IPO high"),
                              ("ath", "bluesky", "All-time high"),
                              ("murphy_entry", "murphy", "Murphy entry"),
@@ -301,6 +301,17 @@ def main():
     if got < 0.5 * asked:   # Yahoo rate limit: without market caps most stocks would be dropped
         sys.exit(f"Fundamentals for only {got}/{asked} stocks - aborting so the site keeps the last good data.")
     ibs.apply_market_cap_filter(result, fund)      # every screen: market cap floor
+    ep = result.screens.get("Episodic Pivot")
+    if ep is not None and not ep.empty:            # was the EP day an earnings day?
+        print(f"Checking earnings dates for {len(ep)} Episodic Pivot stocks...")
+        try:
+            ed = ibs.fetch_earnings_dates(ep["symbol"])
+        except Exception as exc:                   # best effort: never stop the scan
+            print("  earnings dates unavailable:", exc)
+            ed = {}
+        ep["ep_catalyst"] = ["Earnings" if ibs.earnings_on(d, ed.get(sym)) else "News / volume"
+                             for sym, d in zip(ep["symbol"], ep["ep_date"])]
+        print(f"  {int((ep['ep_catalyst'] == 'Earnings').sum())} on earnings")
 
     latest = write_site_data(result, data, args.out, args.universe, args.benchmark, fund)
     write_heatmap(data, fund, args.out, members)

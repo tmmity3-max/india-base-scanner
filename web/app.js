@@ -17,11 +17,11 @@
     "Base Breakout": "Numbered bases with a pivot: at least 3 weeks below a high with a 5–35% pullback. Pick a stage: forming, fresh breakout, climbing or played out. RS 65 or more.",
     "Ichimoku": "Adaptive Ichimoku: a bullish signal in the last 5 sessions (a scored Tenkan/Kijun cross, a cloud breakout on volume, or a retest of the cloud) with nothing bearish since. Newest first.",
     "50 EMA Pullback": "Leaders resting on their 50-day EMA: RS 80 or more, in an uptrend, ran at least 8% above the EMA in the last 40 sessions and now back within 3% of it. Strongest RS first.",
-    "Multi-Year Base": "Back at a high that held for two years or more. Sorted by base length.",
+    "Episodic Pivot": "Pradeep Bonde's EP: in the last 3 sessions the stock gapped up or made a well above-average move on at least 3× its usual volume (earnings or other news), and is still above that day's low. Newest first, heaviest volume first.",
     "IPO Base": "Recent listings basing just under their post-listing high.",
     "Trend Template": "Every liquid stock in a Stage-2 uptrend with RS 70 or more. The pool the VCP screen draws from.",
   };
-  const ORDER = ["VCP", "Blue Sky", "Murphy", "Base Breakout", "50 EMA Pullback", "Ichimoku", "Multi-Year Base", "IPO Base", "Trend Template"];
+  const ORDER = ["VCP", "Blue Sky", "Murphy", "Base Breakout", "50 EMA Pullback", "Ichimoku", "Episodic Pivot", "IPO Base", "Trend Template"];
 
   // Stages: each screen splits into a few groups. `of` names a row's stage,
   // `list` is the order the cards appear in, with a one-line note for each.
@@ -53,9 +53,10 @@
       list: [["At the 50 EMA", "touching it, or within 1%"], ["Bouncing", "touched it and closed above yesterday's high"],
              ["Approaching", "within 3% and still coming down"]],
     },
-    "Multi-Year Base": {
-      of: (r) => (r.myb_pct_from_pivot >= 0 ? "Above the old high" : "Under the old high"),
-      list: [["Under the old high", "approaching it"], ["Above the old high", "breaking out"]],
+    "Episodic Pivot": {
+      of: (r) => (r.ep_days_ago === 0 ? "Today" : r.ep_days_ago === 1 ? "Yesterday" : "2 sessions ago"),
+      list: [["Today", "the EP day is the latest bar"], ["Yesterday", "EP day one session ago, still holding"],
+             ["2 sessions ago", "still above the EP day's low"]],
     },
     "IPO Base": {
       of: (r) => (r.ipo_pct_from_high >= 0 ? "Above the listing high" : "Under the listing high"),
@@ -69,7 +70,7 @@
   // The chart shows only the key level of the screen you are on, so the lines don't pile up.
   const SCREEN_LEVEL = {
     "VCP": "VCP pivot", "Blue Sky": "All-time high", "Murphy": "Murphy entry",
-    "Multi-Year Base": "Multi-year high", "IPO Base": "IPO high",
+    "Episodic Pivot": "EP day low", "IPO Base": "IPO high",
   };
   // Filters that apply to every screen: [key, label, test(row, value)]
   const FILTERS = [
@@ -108,8 +109,10 @@
     vcp_base_days: ["Base days", "int"], vol_dryup: ["Vol dry-up ×", "x"],
     ath: ["All-time high ₹", "num"], pct_from_ath: ["From ATH %", "signed"],
     new_ath_recent: ["New ATH this week", "bool"],
-    myb_pivot: ["Old high ₹", "num"], myb_pct_from_pivot: ["From old high %", "signed"],
-    myb_base_years: ["Base years", "num"], myb_depth: ["Base depth %", "pct"],
+    ep_date: ["EP day", "txt"], ep_days_ago: ["Days ago", "int"], ep_type: ["Type", "txt"],
+    ep_catalyst: ["Catalyst", "txt"], ep_gap: ["Gap %", "signed"], ep_chg: ["EP day %", "signed"],
+    ep_rvol: ["Volume ×", "x"], ep_low: ["EP day low ₹", "num"], ep_pct_since: ["Since EP close %", "signed"],
+    ep_neglected: ["Neglected before", "bool"],
     listed_days: ["Days listed", "int"], ipo_high: ["Listing high ₹", "num"],
     ipo_pct_from_high: ["From high %", "signed"], ipo_base_days: ["Base days", "int"],
     ipo_depth: ["Base depth %", "pct"],
@@ -1334,7 +1337,8 @@
       case "Base Breakout": return r.base_pivot != null ? `${r.base_state}, B${r.base_no}, pivot ₹${nf2.format(r.base_pivot)} (${signed(r.base_pct_from_pivot)}%), ${r.base_weeks}w${r.base_tags ? ", " + r.base_tags : ""}` : "";
       case "Ichimoku": return r.ich_signal ? `${r.ich_signal} ${r.ich_days_ago === 0 ? "today" : r.ich_days_ago + "d ago"}, score ${r.ich_score}, stop ₹${nf2.format(r.ich_sl)}` : "";
       case "50 EMA Pullback": return r.pb_ema50 != null ? `${r.pb_stage}, 50 EMA ₹${nf2.format(r.pb_ema50)} (${signed(r.pb_pct_from_ema)}%), RS ${r.rs_rating}` : "";
-      case "Multi-Year Base": return r.myb_pivot != null ? `Old high ₹${nf2.format(r.myb_pivot)} held ${r.myb_base_years} years` : "";
+      case "Episodic Pivot": return r.ep_date ? `${r.ep_type} ${r.ep_days_ago === 0 ? "today" : r.ep_days_ago + "d ago"}: ${signed(r.ep_chg)}% on ${r.ep_rvol}× volume` +
+        `${r.ep_catalyst ? ", " + r.ep_catalyst : ""}${r.ep_neglected ? ", was neglected" : ""}, EP low ₹${nf2.format(r.ep_low)}` : "";
       case "IPO Base": return r.ipo_high != null ? `Listing high ₹${nf2.format(r.ipo_high)} (${signed(r.ipo_pct_from_high)}%)` : "";
       default: return "";
     }

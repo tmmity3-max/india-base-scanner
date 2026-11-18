@@ -44,10 +44,20 @@ def bluesky_stock():
     return make_series([(0, 100), (500, 160), (150, 120), (300, 250)], seed=1)
 
 
-def multiyear_stock():
-    # Peak at 200, then 3 years sideways 120-180, now back at 199
-    return make_series([(0, 100), (250, 200), (120, 120), (200, 175), (200, 125),
-                        (200, 170), (40, 199)], seed=2)
+def ep_stock(days_ago=1, gap=0.08, vol_mult=6.0, after=1.01):
+    """A quiet, sideways stock that gaps up 8% on 6x volume ``days_ago`` sessions ago."""
+    df = make_series([(0, 100), (200, 104), (100, 101)], noise=0.004, seed=7)
+    d = len(df) - 1 - days_ago
+    pc = df["Close"].iloc[d - 1]
+    df.iloc[d, df.columns.get_loc("Open")] = pc * (1 + gap)
+    df.iloc[d, df.columns.get_loc("Low")] = pc * (1 + gap) * 0.99
+    df.iloc[d, df.columns.get_loc("Close")] = pc * (1 + gap) * 1.03
+    df.iloc[d, df.columns.get_loc("High")] = pc * (1 + gap) * 1.035
+    df.iloc[d, df.columns.get_loc("Volume")] = 1_000_000 * vol_mult
+    for j in range(d + 1, len(df)):                  # holds above the EP day afterwards
+        base = df["Close"].iloc[d] * after
+        df.iloc[j, :4] = [base, base * 1.01, base * 0.995, base]
+    return df
 
 
 def ipo_stock():
@@ -87,10 +97,24 @@ def test_bluesky():
     assert m["bluesky"] and m["pct_from_ath"] > -3
 
 
-def test_multiyear():
-    m = ibs.analyze_stock(multiyear_stock(), ibs.ScanConfig())
-    assert m["multiyear_base"], m
-    assert m["myb_base_years"] >= 2
+def test_episodic_pivot():
+    cfg = ibs.ScanConfig()
+    m = ibs.find_ep(ep_stock(days_ago=1), cfg)
+    assert m["ep"] and m["ep_days_ago"] == 1 and m["ep_type"] == "Gap up", m
+    assert m["ep_gap"] >= 7.9 and m["ep_rvol"] >= 5 and m["ep_neglected"]
+    assert ibs.find_ep(ep_stock(days_ago=0), cfg)["ep_days_ago"] == 0
+    # outside the 3-session window, on normal volume, or broke the EP day's low: no EP
+    assert not ibs.find_ep(ep_stock(days_ago=4), cfg)["ep"]
+    assert not ibs.find_ep(ep_stock(vol_mult=1.5), cfg)["ep"]
+    assert not ibs.find_ep(ep_stock(days_ago=2, after=0.9), cfg)["ep"]
+    # no real gap but a well above-average day (+4% vs a ~1% usual range): a "Big move"
+    m = ibs.find_ep(ep_stock(gap=0.01), cfg)
+    assert m["ep"] and m["ep_type"] == "Big move", m
+    # an ordinary day on heavy volume (+2%) is not an EP
+    assert not ibs.find_ep(ep_stock(gap=-0.01), cfg)["ep"]
+    assert ibs.earnings_on("2026-11-18", [pd.Timestamp("2026-11-17 16:00", tz="Asia/Kolkata")])
+    assert not ibs.earnings_on("2026-11-18", [pd.Timestamp("2026-08-10")])
+    assert not ibs.earnings_on("", [pd.Timestamp("2026-11-17")])
 
 
 def test_ipo():
@@ -296,7 +320,7 @@ def test_indicators_in_range():
 
 
 def test_full_scan_and_excel(tmp_path=None):
-    data = {"VCPCO": vcp_stock(), "SKYCO": bluesky_stock(), "MYBCO": multiyear_stock(),
+    data = {"VCPCO": vcp_stock(), "SKYCO": bluesky_stock(), "EPCO": ep_stock(),
             "IPOCO": ipo_stock(), "DOWNCO": downtrend_stock(), "MURCO": murphy_stock(),
             "BASECO": base_breakout_stock(), "ICHCO": ichimoku_stock(), "PULLCO": pullback_stock()}
     cfg = ibs.ScanConfig(min_rs=0, min_turnover_cr=0, base_min_rs=0, pb_min_rs=0)
@@ -304,7 +328,7 @@ def test_full_scan_and_excel(tmp_path=None):
     s = res.screens
     assert "VCPCO" in set(s["VCP"]["symbol"])
     assert "SKYCO" in set(s["Blue Sky"]["symbol"])
-    assert "MYBCO" in set(s["Multi-Year Base"]["symbol"])
+    assert "EPCO" in set(s["Episodic Pivot"]["symbol"])
     assert "IPOCO" in set(s["IPO Base"]["symbol"])
     assert "MURCO" in set(s["Murphy"]["symbol"])
     assert "BASECO" in set(s["Base Breakout"]["symbol"])
