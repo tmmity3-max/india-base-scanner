@@ -1304,10 +1304,21 @@
       ["Above 52w low", row.pct_above_52w_low != null ? `${signed(row.pct_above_52w_low)}%` : null],
     ];
     const shown = items.filter(([, v]) => v != null && v !== "");
-    if (!shown.length) { box.hidden = true; return; }
+    const q = f.qtr && f.qtr.q ? f.qtr : null;
+    if (!shown.length && !q) { box.hidden = true; return; }
     box.hidden = false;
     const sector = [f.sector, f.yf_industry].filter(Boolean).join(" · ");
-    box.innerHTML = `<h3>Fundamentals${f.name ? ` <span>${f.name}</span>` : ""}</h3>` +
+    // latest quarter: value, change vs the quarter before and vs the same quarter last year
+    const chg = (v, unit) => (v == null ? `<td class="na">–</td>` :
+      `<td class="${v >= 0 ? "pos" : "neg"}">${v > 0 ? "+" : ""}${nf1.format(v)}${unit}</td>`);
+    const qRow = (label, v, txt, a, b, unit) => (v == null ? "" : `<tr><th>${label}</th><td>${txt}</td>${chg(a, unit)}${chg(b, unit)}</tr>`);
+    const qTable = q ? `<table class="qtr"><caption>Latest quarter (${q.q})</caption>` +
+      `<thead><tr><th></th><th>Value</th><th>vs last qtr</th><th>vs year ago</th></tr></thead><tbody>` +
+      qRow("Sales ₹ cr", q.sales_cr, q.sales_cr == null ? "" : nf1.format(q.sales_cr), q.sales_qoq, q.sales_yoy, "%") +
+      qRow("Net profit ₹ cr", q.pat_cr, q.pat_cr == null ? "" : nf1.format(q.pat_cr), q.pat_qoq, q.pat_yoy, "%") +
+      qRow("Operating margin", q.opm, q.opm == null ? "" : nf1.format(q.opm) + "%", q.opm_qoq, q.opm_yoy, " pts") +
+      `</tbody></table>` : "";
+    box.innerHTML = `<h3>Fundamentals${f.name ? ` <span>${f.name}</span>` : ""}</h3>` + qTable +
       `<dl>${shown.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join("")}</dl>` +
       `<p class="fund-src">${sector ? sector + ". " : ""}Source: Yahoo Finance, may be out of date. Check the company's filings before relying on it.</p>`;
   }

@@ -301,6 +301,16 @@ def main():
     if got < 0.5 * asked:   # Yahoo rate limit: without market caps most stocks would be dropped
         sys.exit(f"Fundamentals for only {got}/{asked} stocks - aborting so the site keeps the last good data.")
     ibs.apply_market_cap_filter(result, fund)      # every screen: market cap floor
+    charted = sorted({s for t in result.screens.values() if not t.empty for s in t["symbol"]})
+    print(f"Fetching latest quarterly results for {len(charted)} charted stocks...")
+    try:
+        qtr = ibs.fetch_quarter_summaries(charted)
+    except Exception as exc:                       # best effort: never stop the scan
+        print("  quarterly results unavailable:", exc)
+        qtr = {}
+    for sym, q in qtr.items():
+        fund.setdefault(sym, {})["qtr"] = q
+    print(f"  got quarterly results for {len(qtr)} stocks")
     ep = result.screens.get("Episodic Pivot")
     if ep is not None and not ep.empty:            # was the EP day an earnings day?
         print(f"Checking earnings dates for {len(ep)} Episodic Pivot stocks...")

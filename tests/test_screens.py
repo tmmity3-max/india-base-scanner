@@ -345,6 +345,21 @@ def test_full_scan_and_excel(tmp_path=None):
     os.remove(path)
 
 
+def test_quarter_summary():
+    cols = pd.to_datetime(["2026-09-30", "2026-06-30", "2026-03-31", "2025-12-31", "2025-09-30"])
+    stmt = pd.DataFrame({c: {"Total Revenue": r * 1e7, "Operating Income": o * 1e7, "Net Income": p * 1e7}
+                         for c, r, o, p in zip(cols, [200, 160, 150, 140, 125], [50, 32, 30, 28, 20],
+                                               [30, 20, 18, 17, 10])})
+    q = ibs.quarter_summary(stmt)
+    assert q["q"] == "Sep-26" and q["sales_cr"] == 200 and q["opm"] == 25.0
+    assert q["sales_qoq"] == 25.0 and q["sales_yoy"] == 60.0      # vs 160 and vs 125
+    assert q["pat_qoq"] == 50.0 and q["pat_yoy"] == 200.0
+    assert q["opm_qoq"] == 5.0 and q["opm_yoy"] == 9.0            # 25% vs 20% and vs 16%
+    short = ibs.quarter_summary(stmt.iloc[:, :2])                  # no year-ago quarter
+    assert short["sales_yoy"] is None and short["opm_qoq"] == 5.0
+    assert ibs.quarter_summary(None) == {} and ibs.quarter_summary(pd.DataFrame()) == {}
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

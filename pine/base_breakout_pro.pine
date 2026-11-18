@@ -55,7 +55,7 @@ showPoke = input.bool(true, "Show Failed Pokes", group=gV)
 showOut = input.bool(false, "Show Failed-Breakout Markers", group=gV)
 showDash = input.bool(true, "Show Dashboard", group=gV)
 dashPos = input.string("Top Right", "Dashboard Position", options=["Top Left", "Top Right", "Bottom Left", "Bottom Right"], group=gV)
-showFund = input.bool(true, "Show Fundamentals Table", group=gV, tooltip="EPS, revenue and net profit with quarter-on-quarter and year-on-year change, plus the moving-average values.")
+showFund = input.bool(true, "Show Fundamentals Table", group=gV, tooltip="EPS, revenue, net profit and operating margin with quarter-on-quarter and year-on-year change, plus the moving-average values. Operating margin changes are in percentage points.")
 fundPos = input.string("Bottom Right", "Fundamentals Position", options=["Top Left", "Top Right", "Bottom Left", "Bottom Right"], group=gV)
 
 gI = "Ichimoku"
@@ -512,6 +512,11 @@ float patQ = getFQ("NET_INCOME")
 float epsY = getFY("EARNINGS_PER_SHARE_DILUTED")
 float revY = getFY("TOTAL_REVENUE")
 float patY = getFY("NET_INCOME")
+float opQ = getFQ("OPER_INCOME")
+float opY = getFY("OPER_INCOME")
+// operating margin % = operating income / revenue
+float opmQ = not na(opQ) and revQ > 0 ? opQ / revQ * 100 : na
+float opmY = not na(opY) and revY > 0 ? opY / revY * 100 : na
 
 // % change versus the previously reported value (previous quarter / previous year).
 calcChange(float src) =>
@@ -525,8 +530,16 @@ float epsYch = calcChange(epsY)
 float revYch = calcChange(revY)
 float patYch = calcChange(patY)
 
+// change in percentage points versus the previously reported margin
+calcPts(float src) =>
+    float prev = ta.valuewhen(src != src[1], src[1], 0)
+    not na(src) and not na(prev) ? src - prev : na
+
+float opmQch = calcPts(opmQ)
+float opmYch = calcPts(opmY)
+
 fPos = fundPos == "Top Left" ? position.top_left : fundPos == "Top Right" ? position.top_right : fundPos == "Bottom Left" ? position.bottom_left : position.bottom_right
-var table fundTbl = table.new(fPos, 4, 7, bgcolor=pBg, frame_color=color.new(#6E7781, 35), frame_width=1, border_color=color.new(#535C66, 55), border_width=1, force_overlay=true)
+var table fundTbl = table.new(fPos, 4, 8, bgcolor=pBg, frame_color=color.new(#6E7781, 35), frame_width=1, border_color=color.new(#535C66, 55), border_width=1, force_overlay=true)
 
 fCell(int c, int r, string t, color tc) =>
     table.cell(fundTbl, c, r, t, text_color=tc, bgcolor=pBg, text_size=size.small, text_halign=text.align_left)
@@ -554,6 +567,10 @@ if showFund and barstate.islast
     fRow(1, "EPS (qtr)", epsQ, epsQch, epsYch)
     fRow(2, "Revenue (Rs Cr)", revQ / 1e7, revQch, revYch)
     fRow(3, "PAT (Rs Cr)", patQ / 1e7, patQch, patYch)
-    maRow(4, "21 EMA", ema21, #F23645)
-    maRow(5, "50 MA", ma50, #9C6ADE)
-    maRow(6, "200 MA", ma200, #FF9800)
+    fCell(0, 4, "OPM % (qtr)", color.aqua)
+    fCell(1, 4, na(opmQ) ? "N/A" : str.tostring(opmQ, "0.0") + "%", pTxt)
+    fCell(2, 4, na(opmQch) ? "N/A" : str.tostring(opmQch, "+0.0;-0.0") + " pts", chgCol(opmQch))
+    fCell(3, 4, na(opmYch) ? "N/A" : str.tostring(opmYch, "+0.0;-0.0") + " pts", chgCol(opmYch))
+    maRow(5, "21 EMA", ema21, #F23645)
+    maRow(6, "50 MA", ma50, #9C6ADE)
+    maRow(7, "200 MA", ma200, #FF9800)

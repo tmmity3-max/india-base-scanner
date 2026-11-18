@@ -264,6 +264,76 @@ _FUND_FIELDS = {
 }
 
 
+def quarter_summary(stmt) -> dict:
+    """Latest quarter from a yfinance quarterly income statement: sales and net
+    profit (₹ crore) and operating margin %, each against the quarter before
+    (QoQ) and the same quarter a year earlier (YoY). Growth is in %, margin
+    changes in percentage points. Missing quarters are left out."""
+    if stmt is None or not isinstance(stmt, pd.DataFrame) or stmt.empty:
+        return {}
+    st = stmt.copy()
+    st.columns = pd.to_datetime(st.columns, errors="coerce")
+    st = st.loc[:, st.columns.notna()]
+    st = st.loc[:, ~st.columns.duplicated()].sort_index(axis=1, ascending=False)
+
+    def row(*names):
+        for nm in names:
+            if nm in st.index:
+                return pd.to_numeric(st.loc[nm], errors="coerce")
+        return None
+
+    sales = row("Total Revenue", "Operating Revenue")
+    pat = row("Net Income", "Net Income Common Stockholders")
+    op = row("Operating Income", "Total Operating Income As Reported")
+    cols = [c for c in st.columns if sales is not None and sales.get(c) == sales.get(c)]
+    if not cols:
+        return {}
+    cur = cols[0]
+    prev = cols[1] if len(cols) > 1 and 60 <= (cur - cols[1]).days <= 120 else None
+    ago = next((c for c in cols[1:] if abs((c - (cur - pd.DateOffset(years=1))).days) <= 20), None)
+
+    def val(r, c):
+        if r is None or c is None:
+            return None
+        x = r.get(c)
+        return float(x) if x == x and x is not None else None
+
+    def opm(c):
+        o, sl = val(op, c), val(sales, c)
+        return o / sl * 100 if o is not None and sl else None
+
+    def growth(a, b):
+        return round((a - b) / abs(b) * 100, 1) if a is not None and b else None
+
+    def pts(a, b):
+        return round(a - b, 1) if a is not None and b is not None else None
+
+    s0, p0, m0 = val(sales, cur), val(pat, cur), opm(cur)
+    out = {"q": cur.strftime("%b-%y"),
+           "sales_cr": round(s0 / 1e7, 1) if s0 is not None else None,
+           "pat_cr": round(p0 / 1e7, 1) if p0 is not None else None,
+           "opm": round(m0, 1) if m0 is not None else None,
+           "sales_qoq": growth(s0, val(sales, prev)), "sales_yoy": growth(s0, val(sales, ago)),
+           "pat_qoq": growth(p0, val(pat, prev)), "pat_yoy": growth(p0, val(pat, ago)),
+           "opm_qoq": pts(m0, opm(prev)), "opm_yoy": pts(m0, opm(ago))}
+    return out
+
+
+def fetch_quarter_summaries(symbols: Iterable[str], suffix: str = ".NS", workers: int = 6) -> Dict[str, dict]:
+    """``quarter_summary`` for each stock from Yahoo Finance, best effort."""
+    from concurrent.futures import ThreadPoolExecutor
+    import yfinance as yf
+
+    def one(sym):
+        try:
+            return sym, quarter_summary(yf.Ticker(sym + suffix).quarterly_income_stmt)
+        except Exception:
+            return sym, {}
+
+    with ThreadPoolExecutor(max_workers=workers) as ex:
+        return {s: q for s, q in ex.map(one, list(dict.fromkeys(symbols))) if q}
+
+
 def fetch_fundamentals(symbols: Iterable[str], suffix: str = ".NS", workers: int = 6,
                        verbose: bool = True) -> Dict[str, dict]:
     """Market cap and key ratios from Yahoo Finance, one request per stock.
