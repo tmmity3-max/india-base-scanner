@@ -230,6 +230,17 @@ tbody tr[aria-selected="true"] td:first-child { background: var(--saffron-wash);
 .pager button:hover:not(:disabled) { background: var(--row-hover); }
 .pager button:disabled { opacity: .4; cursor: default; }
 .list { position: sticky; top: 16px; }
+/* side by side: the table and the chart panel are the same height (the screen's)
+   and end at the same line; the panel scrolls inside for the fundamentals */
+@media (min-width: 1081px) {
+  .list { height: calc(100vh - 32px); display: flex; flex-direction: column;
+    background: var(--surface); border: 1px solid var(--grid); border-radius: 10px; overflow: hidden; }
+  .list .table-wrap { flex: 1 1 auto; height: auto !important; min-height: 0; max-height: none; border: 0; border-radius: 0; }
+  .list .pager { margin: 0; padding: 7px 10px; border-top: 1px solid var(--grid); }
+  .list.more-right::after { right: 0; bottom: 0; border-radius: 0; }
+  .chart-panel { height: calc(100vh - 32px); overflow-y: auto; overscroll-behavior: contain;
+    scrollbar-width: thin; scrollbar-color: var(--ink-3) transparent; }
+}
 thead th[aria-sort="ascending"]::after { content: " ▲"; font-size: 10px; }
 thead th[aria-sort="descending"]::after { content: " ▼"; font-size: 10px; }
 tbody td { padding: 6px 10px; border-bottom: 1px solid var(--grid); text-align: right; white-space: nowrap; }

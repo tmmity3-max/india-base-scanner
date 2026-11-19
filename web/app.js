@@ -244,12 +244,8 @@
     const wrap = document.querySelector(".table-wrap"), panel = $("chartPanel");
     if (!wrap || !panel) return;
     const sideBySide = window.matchMedia("(min-width: 1081px)").matches && !$("workspace").hidden;
-    // as tall as the chart, but never taller than the screen, so the sideways
-    // scrollbar and the page buttons are always in view
-    const pager = 44;                                      // room for the page buttons
-    const h = Math.min(panel.offsetHeight, window.innerHeight - 32) - pager;
-    wrap.style.height = sideBySide ? `${Math.max(200, h)}px` : "";
-    wrap.style.maxHeight = sideBySide ? "none" : "";
+    // side by side, CSS makes the table and the chart panel the screen's height
+    wrap.style.height = ""; wrap.style.maxHeight = sideBySide ? "none" : "";
     requestAnimationFrame(fitRows);
   }
   // shadow on the table's right edge while columns are hidden past it
@@ -281,7 +277,8 @@
     };
     const wide = () => window.matchMedia("(min-width: 1081px)").matches;   // side-by-side layout only
     // the chart can grow only while it still fits on the screen with the table beside it
-    const maxH = () => Math.max(260, window.innerHeight - 16 - (canvas.getBoundingClientRect().top - $("chartPanel").getBoundingClientRect().top) - 70);
+    const maxH = () => { const pn = $("chartPanel");
+      return Math.max(260, pn.clientHeight - (canvas.getBoundingClientRect().top - pn.getBoundingClientRect().top + pn.scrollTop) - 60); };
     const setH = (h) => { canvas.style.height = h && wide() ? `${Math.round(Math.min(Math.max(h, 260), maxH()))}px` : ""; };
     setW(load("ibs-chart-w")); setH(load("ibs-chart-h"));
 
