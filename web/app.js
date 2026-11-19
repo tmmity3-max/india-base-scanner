@@ -1464,7 +1464,7 @@
       qRow("Net profit ₹ cr", q.pat_cr, q.pat_cr == null ? "" : nf1.format(q.pat_cr), q.pat_qoq, q.pat_yoy, "%") +
       qRow("Operating margin", q.opm, q.opm == null ? "" : nf1.format(q.opm) + "%", q.opm_qoq, q.opm_yoy, " pts") +
       `</tbody></table>` : "";
-    box.innerHTML = `<h3>Fundamentals${f.name ? ` <span>${f.name}</span>` : ""}</h3>` + qTable +
+    box.innerHTML = `<h3>Fundamentals</h3>${f.name ? `<p class="fund-name">${f.name}</p>` : ""}` + qTable +
       `<dl>${shown.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join("")}</dl>` +
       `<p class="fund-src">${sector ? sector + ". " : ""}Source: Yahoo Finance, may be out of date. Check the company's filings before relying on it.</p>`;
   }

@@ -3,13 +3,13 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Settings – India Base Scanner</title>
+  <title>Settings, India Base Scanner</title>
   <meta name="description" content="Choose the index the RS line is drawn against, and how the RS line looks.">
   <meta name="theme-color" content="#15233F">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2315233F'/%3E%3Cpath d='M6 22h6l3-9 3 5 3-7 5 11' fill='none' stroke='%23E39B2D' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Public+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Geologica:wght,SHRP@200..600,0..100&display=swap" rel="stylesheet">
   <script>
     try { var t = (JSON.parse(localStorage.getItem("ibs-settings") || "{}").theme) || "system";
       if (t === "light" || t === "dark") document.documentElement.setAttribute("data-theme", t); } catch (e) {}
@@ -53,7 +53,7 @@
     <form class="settings" id="settingsForm">
       <fieldset>
         <legend>RS line benchmark</legend>
-        <p class="hint-text">The RS line under each chart is the stock's price divided by this index. A rising line means the stock is doing better than the index.</p>
+        <p class="hint-text">The RS line under each chart is the stock’s price divided by this index. A rising line means the stock is doing better than the index.</p>
         <div class="bench-grid" id="benchGrid">
           <label><input type="radio" name="rsBench" value="NIFTY50"><span><b>NIFTY 50</b><small>Large caps</small></span></label>
           <label><input type="radio" name="rsBench" value="NIFTY500"><span><b>NIFTY 500</b><small>The broad market</small></span></label>
@@ -65,7 +65,7 @@
       <fieldset>
         <legend>Theme</legend>
         <div class="bench-grid theme-grid">
-          <label><input type="radio" name="theme" value="system"><span><b>System</b><small>Follow your device's light or dark setting</small></span></label>
+          <label><input type="radio" name="theme" value="system"><span><b>System</b><small>Follow your device’s light or dark setting</small></span></label>
           <label><input type="radio" name="theme" value="light"><span class="sw sw-light"><b>Light</b><small>Light background</small></span></label>
           <label><input type="radio" name="theme" value="dark"><span class="sw sw-dark"><b>Dark</b><small>Dark background</small></span></label>
         </div>
@@ -98,7 +98,7 @@
   </main>
 
   <footer class="foot">
-    <p>The RS rating (1–99) in the tables doesn't change with this setting: it ranks each stock's own 12-month performance against all liquid NSE stocks.</p>
+    <p>The RS rating (1 to 99) in the tables doesn’t change with this setting: it ranks each stock’s own 12-month performance against all liquid NSE stocks.</p>
   </footer>
 
   <script src="data-source.js"></script>

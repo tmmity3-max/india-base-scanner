@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>India Base Scanner – daily VCP, all-time-high and base breakout screens for NSE</title>
+  <title>India Base Scanner: daily VCP, all-time-high and base breakout screens for NSE</title>
   <meta name="description" content="Free, open-source daily screens for every liquid NSE stock: VCP, Blue Sky (all-time high), Murphy pullback, Base Breakout, 50 EMA Pullback, Ichimoku, Episodic Pivot, ATR Entry, IPO Base and Trend Template, with RS rating and zoomable charts. Updated after every close.">
   <meta property="og:title" content="India Base Scanner">
   <meta property="og:description" content="Today's VCP, all-time-high, Murphy pullback and base breakout setups across every liquid NSE stock. Free and open source.">
@@ -11,7 +11,7 @@
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2315233F'/%3E%3Cpath d='M6 22h6l3-9 3 5 3-7 5 11' fill='none' stroke='%23E39B2D' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Public+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Geologica:wght,SHRP@200..600,0..100&display=swap" rel="stylesheet">
   <script>
     try { var t = (JSON.parse(localStorage.getItem("ibs-settings") || "{}").theme) || "system";
       if (t === "light" || t === "dark") document.documentElement.setAttribute("data-theme", t); } catch (e) {}
@@ -49,7 +49,7 @@
 
   <main>
     <section class="intro">
-      <h1 id="headline">Today's setups</h1>
+      <h1 id="headline">Today’s setups</h1>
       <p id="meta" class="meta">Loading the latest scan…</p>
     </section>
 
@@ -68,7 +68,7 @@
           <span id="filterBtnText">Filters</span>
         </button>
         <section class="filters" id="filters" aria-label="Filters" hidden>
-          <h3 class="filter-title" id="filterTitle">Filters</h3>
+          <h2 class="filter-title" id="filterTitle">Filters</h2>
           <div class="filter-quick">
             <div class="seg" id="mcapSeg" role="group" aria-label="Market cap"></div>
             <div class="seg" id="turnoverSeg" role="group" aria-label="Daily turnover"></div>
@@ -102,9 +102,9 @@
     <section class="workspace" id="workspace">
       <div class="list">
         <div class="pager" id="pager" hidden>
-          <button type="button" id="pgPrev">‹ Prev</button>
+          <button type="button" id="pgPrev">Previous</button>
           <span id="pgInfo"></span>
-          <button type="button" id="pgNext">Next ›</button>
+          <button type="button" id="pgNext">Next</button>
         </div>
         <div class="table-wrap">
           <table id="table">
@@ -168,7 +168,7 @@
           <span class="k-ma"><i class="k-base"></i>Base</span>
           <span class="k-ma"><i class="k-level bo"></i>Base pivot</span>
           <span class="k-ma"><i class="k-bo"></i>Breakout</span>
-          <span class="k-ma"><i class="k-level"></i>This screen's key level</span>
+          <span class="k-ma"><i class="k-level"></i>This screen’s key level</span>
           <span id="rsLegend"><i class="k-rs"></i>RS line vs index</span>
         </div>
         <p class="ich-info" id="ichInfo" hidden></p>
@@ -185,8 +185,8 @@
       <ol>
         <li>Click <b>Copy code</b>.</li>
         <li>In TradingView, open a daily chart and click <b>Pine Editor</b> at the bottom of the screen.</li>
-        <li>Delete what's in the editor, paste the code, and click <b>Add to chart</b>. Click <b>Save</b> to keep it in your indicators.</li>
-        <li>Choose the entry method, filter and RS benchmark in the indicator's settings (the gear icon).</li>
+        <li>Delete what’s in the editor, paste the code, and click <b>Add to chart</b>. Click <b>Save</b> to keep it in your indicators.</li>
+        <li>Choose the entry method, filter and RS benchmark in the indicator’s settings (the gear icon).</li>
       </ol>
       <div class="pine-actions">
         <button type="button" id="pineCopy" class="btn-primary" disabled>Copy code</button>
@@ -205,26 +205,26 @@
         <div><dt>Trend Template</dt><dd>Price above the 50, 150 and 200-day averages in that order, the 200-day rising for a month, at least 25% above the 52-week low, within 25% of the 52-week high, and RS rating of 70 or more.</dd></div>
         <div><dt>VCP</dt><dd>Passes the Trend Template, then at least two pullbacks in the last six months, each no deeper than the one before, the last under 12%, volume drying up, and price within 6% of the pivot (the high of the last pullback).</dd></div>
         <div><dt>Blue Sky</dt><dd>Within 3% of the all-time high, with at least three years of history and RS of 70 or more. No old buyers waiting to sell above.</dd></div>
-        <div><dt>Murphy</dt><dd>John Murphy's positional trend-following. Weekly filter from completed weeks: price above a rising 40-week SMA. Then, within the last 5 sessions, a 10-day SMA crossing above the 50-day, a close above the last 4 full weeks' high, or a crossover confirmed by a 2-week breakout.</dd></div>
+        <div><dt>Murphy</dt><dd>John Murphy’s positional trend-following. Weekly filter from completed weeks: price above a rising 40-week SMA. Then, within the last 5 sessions, a 10-day SMA crossing above the 50-day, a close above the last 4 full weeks' high, or a crossover confirmed by a 2-week breakout.</dd></div>
         <div><dt>Base Breakout</dt><dd>A base starts at a swing high, the pivot. It counts once price has spent at least 3 weeks below that high with a pullback of 5% to 35%. A close above the pivot, while above the 50 and 200-day averages, is the breakout. Bases are numbered B1, B2 and so on, and the count restarts when a base undercuts the low of the one before. Listed: stocks with an RS rating of 65 or more, in one of four stages. Forming: a new base is in place and price is above its 50-day EMA; a stock with a new base is always listed here, not under its older breakout. Fresh breakout: closed above the pivot in the last 5 sessions, still above it and no more than 7% beyond. Climbing: broke out up to 60 sessions ago and has not closed back under the pivot. Played out: broke out in that time but the breakout failed, meaning price has closed back under the pivot, whether straight away or weeks later. On the chart each base is a shaded box with its pivot along the top and a green triangle on the breakout bar. Tags: Sky (pivot is an all-time high), VCP (the last third of the base is tight on lower volume), Squat (the breakout bar closed in its lower 40%).</dd></div>
         <div><dt>Ichimoku</dt><dd>Adaptive Ichimoku. The Tenkan, Kijun and Senkou B lengths (9 / 26 / 52) shorten by up to 40% when volatility is high and lengthen when it is low. A stock is listed when a bullish signal fired in the last 5 sessions and nothing bearish has fired since. The signals: a Tenkan cross above Kijun that passes the cloud-thickness, volume and Chikou checks with a confluence score of 50 or more; a close up through the cloud on volume at least 1.3 times its 20-day average; or a retest of the cloud edge within 10 sessions of a breakout. The chart also marks cloud twists, momentum divergences and flat-Kijun support and resistance zones, and draws the setup the last signal opened: entry, a stop under the Kijun and targets at 1.5, 2.5 and 4 times the risk. The rules follow the Adaptive Ichimoku Nexus indicator by WillyAlgoTrader at its default settings.</dd></div>
-        <div><dt>50 EMA Pullback</dt><dd>A leader resting on its 50-day EMA. RS rating of 80 or more; close above the 200-day average, with the 50 EMA above it and rising; ran at least 8% above the EMA at some point in the last 40 sessions; and now closes between 2% under and 3% over the EMA. Stages: At the 50 EMA (touched it in the last three sessions, or within 1%), Bouncing (touched it in the last five sessions and closed above the previous day's high), Approaching (within 3% and no touch yet).</dd></div>
-        <div><dt>Episodic Pivot</dt><dd>After Pradeep Bonde's EP: new information makes the market reprice a stock fast. Listed: in the last month (21 sessions) the stock gapped up at least 3% and held it, or gained at least 4% and twice its usual daily range, on at least 3 times its 50-day average volume and ₹5 crore of turnover, closing in the upper half of the day. It must still be above that day's low. Catalyst says Earnings when Yahoo shows results on or just before the EP day, otherwise News / volume: the abnormal volume itself is the clue, so check the news. "Neglected before" means the stock had gone nowhere in the three months before. The chart marks the EP day's low, the usual stop.</dd></div>
-        <div><dt>ATR Entry</dt><dd>The green buy circle of the RS Line + Buy Signals TradingView indicator. The entry line is the 70-day average plus 2 ATR (14-day). Listed when the first close above that line came in the last 5 sessions, with +DI above −DI (the trend points up), the RS line above its 50-day average, and the stock no more than 7 ATR above its 50-day average, so very stretched names are left out. "Above line now" shows whether it is still above the line; the chart marks today's entry line.</dd></div>
+        <div><dt>50 EMA Pullback</dt><dd>A leader resting on its 50-day EMA. RS rating of 80 or more; close above the 200-day average, with the 50 EMA above it and rising; ran at least 8% above the EMA at some point in the last 40 sessions; and now closes between 2% under and 3% over the EMA. Stages: At the 50 EMA (touched it in the last three sessions, or within 1%), Bouncing (touched it in the last five sessions and closed above the previous day’s high), Approaching (within 3% and no touch yet).</dd></div>
+        <div><dt>Episodic Pivot</dt><dd>After Pradeep Bonde’s EP: new information makes the market reprice a stock fast. Listed: in the last month (21 sessions) the stock gapped up at least 3% and held it, or gained at least 4% and twice its usual daily range, on at least 3 times its 50-day average volume and ₹5 crore of turnover, closing in the upper half of the day. It must still be above that day’s low. Catalyst says Earnings when Yahoo shows results on or just before the EP day, otherwise News / volume: the abnormal volume itself is the clue, so check the news. “Neglected before” means the stock had gone nowhere in the three months before. The chart marks the EP day’s low, the usual stop.</dd></div>
+        <div><dt>ATR Entry</dt><dd>The green buy circle of the RS Line + Buy Signals TradingView indicator. The entry line is the 70-day average plus 2 ATR (14-day). Listed when the first close above that line came in the last 5 sessions, with +DI above −DI (the trend points up), the RS line above its 50-day average, and the stock no more than 7 ATR above its 50-day average, so very stretched names are left out. “Above line now” shows whether it is still above the line; the chart marks today’s entry line.</dd></div>
         <div><dt>IPO Base</dt><dd>Listed within the last two years, has built a base at least 10 days long and no deeper than 35%, and is now within 8% of its post-listing high.</dd></div>
-        <div><dt>RS rating</dt><dd>Weighted 12-month return, with the latest quarter counting double, ranked 1–99 against every liquid stock scanned.</dd></div>
+        <div><dt>RS rating</dt><dd>Weighted 12-month return, with the latest quarter counting double, ranked 1 to 99 against every liquid stock scanned.</dd></div>
         <div><dt>Liquidity and size</dt><dd>Every screen only lists stocks priced at ₹50 or more, with an average daily turnover of ₹1 crore or more over the last 50 sessions and a market cap of ₹500 crore or more. The market cap buttons above the table raise that to ₹1,000 or ₹2,000 crore. Market cap comes from Yahoo Finance; a stock it has no figure for is left out.</dd></div>
       </dl>
     </section>
     <section class="advisory" id="advisory" aria-labelledby="advTitle">
       <h2 id="advTitle">Risk advisory</h2>
-      <p>The screens and the TradingView indicator only point out stocks whose charts match a set of rules. They don't tell you where to exit. Before you act on any of them:</p>
+      <p>The screens and the TradingView indicator only point out stocks whose charts match a set of rules. They don’t tell you where to exit. Before you act on any of them:</p>
       <ol>
         <li><b>Take a proper stop-loss in every trade.</b> Decide where you are wrong before you buy, and place the stop-loss as soon as you enter.</li>
-        <li><b>Manage your risk properly.</b> Risk only a small, fixed part of your capital on any one trade, so a string of losses can't hurt you badly.</li>
+        <li><b>Manage your risk properly.</b> Risk only a small, fixed part of your capital on any one trade, so a string of losses can’t hurt you badly.</li>
         <li><b>Size the position from the stop.</b> Work out the quantity from the distance between your entry and your stop-loss, not from how sure you feel.</li>
         <li><b>Never widen a stop-loss.</b> Move it up to protect profit if you like, but never lower it to avoid taking a loss.</li>
-        <li><b>Don't average down a losing trade.</b> Adding to a position that is going against you increases the risk you already decided to take.</li>
+        <li><b>Don’t average down a losing trade.</b> Adding to a position that is going against you increases the risk you already decided to take.</li>
         <li><b>A screen is a starting point, not a signal to buy.</b> Check the chart, the news and the company yourself before every trade.</li>
       </ol>
     </section>
