@@ -1207,7 +1207,7 @@
       const pages = Math.max(1, Math.ceil(list.length / state.perPage));
       state.page = Math.min(state.page, pages - 1);
       const from = state.page * state.perPage;
-      renderTable(list.slice(from, from + state.perPage), all.length);
+      renderTable(list.slice(from, from + state.perPage), all.length, from);
       renderPager(list.length, pages, from);
     } else { $("pager").hidden = true; renderGrid(list); }
   }
@@ -1269,7 +1269,7 @@
   }
 
   // ---------- table ----------
-  function renderTable(list, total) {
+  function renderTable(list, total, from = 0) {
     const cols = total ? Object.keys((state.data.screens[state.screen] || [])[0]).filter((c) => COLS[c]) : [];
     const thead = $("table").tHead, tbody = $("table").tBodies[0];
     thead.innerHTML = ""; tbody.innerHTML = "";
@@ -1277,11 +1277,15 @@
     if (!total) return;
 
     const tr = document.createElement("tr");
+    const slh = document.createElement("th");            // serial number, counted across pages
+    slh.textContent = "#"; slh.scope = "col"; slh.className = "sl"; slh.style.cursor = "default";
+    tr.appendChild(slh);
     for (const c of cols) {
       const th = document.createElement("th");
       th.textContent = COLS[c][0];
       th.scope = "col"; th.tabIndex = 0;
       if (COLS[c][1] === "txt") th.className = "txt";
+      if (c === "symbol") th.classList.add("sym");
       if (state.sort === c) th.setAttribute("aria-sort", state.dir > 0 ? "ascending" : "descending");
       const sortBy = () => {
         if (state.sort === c) state.dir = -state.dir;
@@ -1300,6 +1304,9 @@
       row.tabIndex = 0;
       row.dataset.symbol = r.symbol;
       if (r.symbol === state.symbol) row.setAttribute("aria-selected", "true");
+      const sl = document.createElement("td");
+      sl.className = "sl"; sl.textContent = from + list.indexOf(r) + 1;
+      row.appendChild(sl);
       for (const c of cols) {
         const td = document.createElement("td");
         const [text, cls] = fmt(r[c], COLS[c][1]);
