@@ -215,15 +215,21 @@ thead th {
   padding: 10px 12px; border-bottom: 1px solid var(--grid); cursor: pointer; user-select: none;
 }
 thead th:first-child, tbody td:first-child, thead th.txt, tbody td.txt { text-align: left; }
-/* Excel-style column resizing: a grip on each header's right edge */
-thead th { overflow: visible; }
-.col-grip { position: absolute; top: 0; right: -4px; width: 9px; height: 100%; cursor: col-resize; z-index: 3; touch-action: none; }
-.col-grip::after { content: ""; position: absolute; top: 20%; bottom: 20%; left: 4px; width: 1px; background: var(--grid); }
-.col-grip:hover::after, .col-grip.dragging::after { top: 0; bottom: 0; width: 2px; left: 3.5px; background: var(--saffron); }
-body.col-resizing, body.col-resizing * { cursor: col-resize !important; }
-table.fixed { table-layout: fixed; }
-table.fixed th, table.fixed td { overflow: hidden; text-overflow: ellipsis; }
-table.fixed th { overflow: visible; }
+/* the Stock column stays put while the table scrolls sideways */
+thead th:first-child, tbody td:first-child { position: sticky; left: 0; background: var(--surface); }
+thead th:first-child { z-index: 2; }
+tbody td:first-child { z-index: 1; box-shadow: 1px 0 0 var(--grid); }
+tbody tr:hover td:first-child { background: var(--row-hover); }
+tbody tr[aria-selected="true"] td:first-child { background: var(--saffron-wash); box-shadow: inset 3px 0 0 var(--saffron), 1px 0 0 var(--grid); }
+/* pages */
+.table-wrap { overflow-y: hidden; overflow-x: auto; }
+.pager { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 8px; font-size: 12.5px; color: var(--ink-2); }
+.pager[hidden] { display: none; }
+.pager button { appearance: none; cursor: pointer; font: 600 12.5px/1 var(--body); color: var(--ink); background: var(--surface);
+  border: 1px solid var(--grid); border-radius: 7px; padding: 7px 12px; }
+.pager button:hover:not(:disabled) { background: var(--row-hover); }
+.pager button:disabled { opacity: .4; cursor: default; }
+.list { position: sticky; top: 16px; }
 thead th[aria-sort="ascending"]::after { content: " ▲"; font-size: 10px; }
 thead th[aria-sort="descending"]::after { content: " ▼"; font-size: 10px; }
 tbody td { padding: 6px 10px; border-bottom: 1px solid var(--grid); text-align: right; white-space: nowrap; }
@@ -330,6 +336,7 @@ canvas.mini { width: 100%; height: 340px; display: block; touch-action: pan-y; c
 @media (max-width: 1080px) {
   .workspace { grid-template-columns: 1fr; }
   .splitter, .chart-resize { display: none; }
+  .list { position: relative; top: auto; }
   .chart-panel {
     position: fixed; inset: auto 0 0 0; top: auto; z-index: 20;
     border-radius: 16px 16px 0 0; max-height: 88vh; overflow: auto;

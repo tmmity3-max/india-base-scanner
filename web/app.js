@@ -134,7 +134,7 @@
 
   const $ = (id) => document.getElementById(id);
   const state = { data: null, screen: "VCP", sort: null, dir: -1, query: "", symbol: null, view: "table", perRow: 2,
-                  stage: null, filters: {}, showBases: true };
+                  stage: null, filters: {}, showBases: true, page: 0, perPage: 20, listKey: "" };
   state.filters = loadFilters();
   try { state.showBases = localStorage.getItem("ibs-bases") !== "0"; } catch (e) { /* private window */ }
   const chartCache = new Map();
@@ -244,8 +244,13 @@
     const wrap = document.querySelector(".table-wrap"), panel = $("chartPanel");
     if (!wrap || !panel) return;
     const sideBySide = window.matchMedia("(min-width: 1081px)").matches && !$("workspace").hidden;
-    wrap.style.height = sideBySide ? `${panel.offsetHeight}px` : "";
+    // as tall as the chart, but never taller than the screen, so the sideways
+    // scrollbar and the page buttons are always in view
+    const pager = 44;                                      // room for the page buttons
+    const h = Math.min(panel.offsetHeight, window.innerHeight - 32) - pager;
+    wrap.style.height = sideBySide ? `${Math.max(200, h)}px` : "";
     wrap.style.maxHeight = sideBySide ? "none" : "";
+    requestAnimationFrame(fitRows);
   }
   // shadow on the table's right edge while columns are hidden past it
   function edgeHint() {
@@ -271,11 +276,13 @@
     const save = (k, v) => { try { v ? localStorage.setItem(k, String(Math.round(v))) : localStorage.removeItem(k); } catch (e) { /* private window */ } };
     const setW = (w) => {
       if (!w) { ws.style.removeProperty("--chart-w"); return; }
-      const max = Math.max(360, ws.clientWidth - 320);
+      const max = Math.max(360, ws.clientWidth - 400);     // the table keeps at least ~400px
       ws.style.setProperty("--chart-w", `${Math.round(Math.min(Math.max(w, 360), max))}px`);
     };
     const wide = () => window.matchMedia("(min-width: 1081px)").matches;   // side-by-side layout only
-    const setH = (h) => { canvas.style.height = h && wide() ? `${Math.round(Math.min(Math.max(h, 260), 1600))}px` : ""; };
+    // the chart can grow only while it still fits on the screen with the table beside it
+    const maxH = () => Math.max(260, window.innerHeight - 16 - (canvas.getBoundingClientRect().top - $("chartPanel").getBoundingClientRect().top) - 70);
+    const setH = (h) => { canvas.style.height = h && wide() ? `${Math.round(Math.min(Math.max(h, 260), maxH()))}px` : ""; };
     setW(load("ibs-chart-w")); setH(load("ibs-chart-h"));
 
     function drag(el, onMove, onEnd) {
@@ -1196,8 +1203,45 @@
     if (!all.length) {
       $("empty").innerHTML = `<h3>No stocks pass ${state.screen} today</h3><p>That's normal in a weak market, since bases form when leaders rest. Check the Trend Template list for stocks in an uptrend, or run the Colab notebook with looser settings.</p>`;
     }
-    if (state.view === "table") renderTable(list, all.length);
-    else renderGrid(list);
+    if (state.view === "table") {
+      // a new screen, stage, filter, search or sort starts again at page 1
+      const key = [state.screen, state.stage, state.query, state.sort, state.dir, JSON.stringify(state.filters)].join("|");
+      if (key !== state.listKey) { state.listKey = key; state.page = 0; }
+      const pages = Math.max(1, Math.ceil(list.length / state.perPage));
+      state.page = Math.min(state.page, pages - 1);
+      const from = state.page * state.perPage;
+      renderTable(list.slice(from, from + state.perPage), all.length);
+      renderPager(list.length, pages, from);
+    } else { $("pager").hidden = true; renderGrid(list); }
+  }
+
+  // ---------- pages: as many rows as fit on screen, so the table never scrolls up and down ----------
+  function renderPager(n, pages, from) {
+    const pg = $("pager");
+    pg.hidden = n === 0;
+    $("pgInfo").textContent = `${from + 1}–${Math.min(from + state.perPage, n)} of ${n} · page ${state.page + 1} of ${pages}`;
+    $("pgPrev").disabled = state.page === 0;
+    $("pgNext").disabled = state.page >= pages - 1;
+  }
+  function gotoPage(d) { state.page += d; refreshList(); }
+  $("pgPrev").addEventListener("click", () => gotoPage(-1));
+  $("pgNext").addEventListener("click", () => gotoPage(1));
+  document.querySelector(".table-wrap").addEventListener("keydown", (e) => {
+    if (e.key === "PageDown" && !$("pgNext").disabled) { e.preventDefault(); gotoPage(1); }
+    if (e.key === "PageUp" && !$("pgPrev").disabled) { e.preventDefault(); gotoPage(-1); }
+  });
+  // work out how many rows fit in the table's height
+  function fitRows() {
+    if (!state.data || state.view !== "table") return;
+    const wrap = document.querySelector(".table-wrap"), table = $("table");
+    const head = table.tHead ? table.tHead.offsetHeight : 34;
+    const row = (table.tBodies[0].rows[0] || {}).offsetHeight || 30;
+    const per = Math.max(5, Math.floor((wrap.clientHeight - head - 2) / row));
+    if (per !== state.perPage) {
+      const first = state.page * state.perPage;           // keep the same rows in view
+      state.perPage = per; state.page = Math.floor(first / per);
+      refreshList();
+    }
   }
 
   // ---------- Murphy TradingView indicator ----------
@@ -1249,13 +1293,6 @@
       };
       th.addEventListener("click", sortBy);
       th.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); sortBy(); } });
-      th.dataset.col = c;
-      const grip = document.createElement("span");          // drag the right edge, like Excel
-      grip.className = "col-grip"; grip.title = "Drag to resize · double-click to fit";
-      grip.addEventListener("click", (e) => e.stopPropagation());
-      grip.addEventListener("pointerdown", (e) => startColResize(e, th));
-      grip.addEventListener("dblclick", (e) => { e.stopPropagation(); setColWidth(c, 0); refreshList(); });
-      th.appendChild(grip);
       tr.appendChild(th);
     }
     thead.appendChild(tr);
@@ -1285,62 +1322,6 @@
       frag.appendChild(row);
     }
     tbody.appendChild(frag);
-    applyColWidths();
-  }
-
-  // ---------- column widths (drag a header's right edge, like Excel) ----------
-  // Widths are kept per screen in this browser. Once any column on a screen
-  // has a width of its own, the table switches to fixed layout: every column
-  // keeps the width it had, long text is cut with "…", and the table can be
-  // wider (scroll sideways) or narrower than the panel.
-  const CWKEY = "ibs-col-widths";
-  function colWidths() {
-    try { return (JSON.parse(localStorage.getItem(CWKEY) || "{}") || {})[state.screen] || {}; } catch (e) { return {}; }
-  }
-  function setColWidth(col, w) {
-    let all = {};
-    try { all = JSON.parse(localStorage.getItem(CWKEY) || "{}") || {}; } catch (e) { /* ignore */ }
-    const mine = all[state.screen] || {};
-    if (w) mine[col] = Math.round(w); else delete mine[col];
-    if (Object.keys(mine).length) all[state.screen] = mine; else delete all[state.screen];
-    try { localStorage.setItem(CWKEY, JSON.stringify(all)); } catch (e) { /* private window */ }
-  }
-  function applyColWidths() {
-    const table = $("table"), ths = [...table.tHead.querySelectorAll("th")], saved = colWidths();
-    table.classList.remove("fixed"); table.style.width = "";
-    for (const th of ths) th.style.width = "";
-    if (!Object.keys(saved).length) return;               // natural widths
-    const natural = ths.map((th) => Math.ceil(th.getBoundingClientRect().width) + 2);   // slack so text is not cut by rounding
-    let sum = 0;
-    ths.forEach((th, i) => {
-      const w = saved[th.dataset.col] || natural[i];
-      th.style.width = `${w}px`; sum += w;
-    });
-    table.style.width = `${sum}px`;
-    table.classList.add("fixed");
-  }
-  function startColResize(e, th) {
-    if (e.button !== 0) return;
-    e.preventDefault(); e.stopPropagation();
-    const table = $("table"), ths = [...table.tHead.querySelectorAll("th")];
-    if (!table.classList.contains("fixed")) {              // freeze the current widths first
-      let sum = 0;
-      const ws = ths.map((h) => Math.ceil(h.getBoundingClientRect().width) + 2);
-      ths.forEach((h, i) => { h.style.width = `${ws[i]}px`; sum += ws[i]; });
-      table.style.width = `${sum}px`; table.classList.add("fixed");
-    }
-    const grip = e.target, x0 = e.clientX, w0 = th.offsetWidth, t0 = table.offsetWidth;
-    grip.setPointerCapture(e.pointerId); grip.classList.add("dragging"); document.body.classList.add("resizing", "col-resizing");
-    const move = (ev) => {
-      const w = Math.max(40, Math.min(600, w0 + ev.clientX - x0));
-      th.style.width = `${w}px`; table.style.width = `${t0 + w - w0}px`;
-    };
-    const up = () => {
-      grip.classList.remove("dragging"); document.body.classList.remove("resizing", "col-resizing");
-      grip.removeEventListener("pointermove", move); grip.removeEventListener("pointerup", up); grip.removeEventListener("pointercancel", up);
-      setColWidth(th.dataset.col, th.offsetWidth);
-    };
-    grip.addEventListener("pointermove", move); grip.addEventListener("pointerup", up); grip.addEventListener("pointercancel", up);
   }
 
   // ---------- big chart ----------

@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Website: resize table columns like Excel by dragging a header's right edge (saved per screen; double-click to fit). The table shows a soft edge when more columns are hidden to the right.
+- Website: the table shows as many rows as fit on the screen, with Prev / Next pages, so the sideways scrollbar is always in view; the Stock column stays fixed when scrolling sideways. The chart's width and height handles stop where the table and chart still fit side by side on the screen.
 - Website: drag the bar between the table and the chart to resize them, and the bar under the chart to change its height (kept in your browser; double-click to reset). Smaller text across the page.
 - Website chart panel: latest quarter's sales, net profit and operating margin, each against the quarter before and the same quarter a year earlier (margin change in percentage points).
 - `pine/base_breakout_pro.pine`: operating margin row in the fundamentals table, with its change against the last quarter and last year in percentage points.
