@@ -18,10 +18,11 @@
     "Ichimoku": "Adaptive Ichimoku: a bullish signal in the last 5 sessions (a scored Tenkan/Kijun cross, a cloud breakout on volume, or a retest of the cloud) with nothing bearish since. Newest first.",
     "50 EMA Pullback": "Leaders resting on their 50-day EMA: RS 80 or more, in an uptrend, ran at least 8% above the EMA in the last 40 sessions and now back within 3% of it. Strongest RS first.",
     "Episodic Pivot": "Pradeep Bonde's EP: in the last month the stock gapped up or made a well above-average move on at least 3× its usual volume (earnings or other news), and is still above that day's low. Newest first, heaviest volume first.",
+    "ATR Entry": "The green circle of the RS Line + Buy Signals indicator: the first close at least 2 ATR above the 70-day SMA, with +DI above −DI, the RS line above its 50-day average and no more than 7 ATR above the 50-day SMA. Signals in the last 5 sessions, newest first.",
     "IPO Base": "Recent listings basing just under their post-listing high.",
     "Trend Template": "Every liquid stock in a Stage-2 uptrend with RS 70 or more. The pool the VCP screen draws from.",
   };
-  const ORDER = ["VCP", "Blue Sky", "Murphy", "Base Breakout", "50 EMA Pullback", "Ichimoku", "Episodic Pivot", "IPO Base", "Trend Template"];
+  const ORDER = ["VCP", "Blue Sky", "Murphy", "Base Breakout", "50 EMA Pullback", "Ichimoku", "Episodic Pivot", "ATR Entry", "IPO Base", "Trend Template"];
 
   // Stages: each screen splits into a few groups. `of` names a row's stage,
   // `list` is the order the cards appear in, with a one-line note for each.
@@ -58,6 +59,10 @@
       list: [["Today", "the EP day is the latest bar"], ["This week", "EP day in the last 5 sessions, still holding"],
              ["This month", "EP day in the last month, still above its low"]],
     },
+    "ATR Entry": {
+      of: (r) => (r.atr_days_ago === 0 ? "Signal today" : r.atr_days_ago <= 2 ? "1–2 sessions ago" : "3–5 sessions ago"),
+      list: [["Signal today", "first close above the entry line"], ["1–2 sessions ago", "still close to the entry"], ["3–5 sessions ago", "check how far it has moved"]],
+    },
     "IPO Base": {
       of: (r) => (r.ipo_pct_from_high >= 0 ? "Above the listing high" : "Under the listing high"),
       list: [["Under the listing high", "still basing"], ["Above the listing high", "breaking out"]],
@@ -70,7 +75,7 @@
   // The chart shows only the key level of the screen you are on, so the lines don't pile up.
   const SCREEN_LEVEL = {
     "VCP": "VCP pivot", "Blue Sky": "All-time high", "Murphy": "Murphy entry",
-    "Episodic Pivot": "EP day low", "IPO Base": "IPO high",
+    "Episodic Pivot": "EP day low", "ATR Entry": "ATR entry line", "IPO Base": "IPO high",
   };
   // Filters that apply to every screen: [key, label, test(row, value)]
   const FILTERS = [
@@ -117,6 +122,8 @@
     ep_catalyst: ["Catalyst", "txt"], ep_gap: ["Gap %", "signed"], ep_chg: ["EP day %", "signed"],
     ep_rvol: ["Volume ×", "x"], ep_low: ["EP day low ₹", "num"], ep_pct_since: ["Since EP close %", "signed"],
     ep_neglected: ["Neglected before", "bool"],
+    atr_signal_date: ["Signal date", "txt"], atr_days_ago: ["Days ago", "int"], atr_line: ["Entry line ₹", "num"],
+    atr_pct_from_line: ["From line %", "signed"], atr_in_zone: ["Above line now", "bool"], atr_ext: ["ATRs over 50 SMA", "num"],
     listed_days: ["Days listed", "int"], ipo_high: ["Listing high ₹", "num"],
     ipo_pct_from_high: ["From high %", "signed"], ipo_base_days: ["Base days", "int"],
     ipo_depth: ["Base depth %", "pct"],
@@ -1489,6 +1496,7 @@
       case "50 EMA Pullback": return r.pb_ema50 != null ? `${r.pb_stage}, 50 EMA ₹${nf2.format(r.pb_ema50)} (${signed(r.pb_pct_from_ema)}%), RS ${r.rs_rating}` : "";
       case "Episodic Pivot": return r.ep_date ? `${r.ep_type} ${r.ep_days_ago === 0 ? "today" : r.ep_days_ago + "d ago"}: ${signed(r.ep_chg)}% on ${r.ep_rvol}× volume` +
         `${r.ep_catalyst ? ", " + r.ep_catalyst : ""}${r.ep_neglected ? ", was neglected" : ""}, EP low ₹${nf2.format(r.ep_low)}` : "";
+      case "ATR Entry": return r.atr_signal_date ? `Signal ${r.atr_days_ago === 0 ? "today" : r.atr_days_ago + "d ago"}, entry line ₹${nf2.format(r.atr_line)} (${signed(r.atr_pct_from_line)}%), ${r.atr_ext} ATR over 50 SMA` : "";
       case "IPO Base": return r.ipo_high != null ? `Listing high ₹${nf2.format(r.ipo_high)} (${signed(r.ipo_pct_from_high)}%)` : "";
       default: return "";
     }

@@ -321,7 +321,7 @@ def test_indicators_in_range():
 
 
 def test_full_scan_and_excel(tmp_path=None):
-    data = {"VCPCO": vcp_stock(), "SKYCO": bluesky_stock(), "EPCO": ep_stock(),
+    data = {"VCPCO": vcp_stock(), "SKYCO": bluesky_stock(), "EPCO": ep_stock(), "ATRCO": atr_entry_stock(),
             "IPOCO": ipo_stock(), "DOWNCO": downtrend_stock(), "MURCO": murphy_stock(),
             "BASECO": base_breakout_stock(), "ICHCO": ichimoku_stock(), "PULLCO": pullback_stock()}
     cfg = ibs.ScanConfig(min_rs=0, min_turnover_cr=0, base_min_rs=0, pb_min_rs=0)
@@ -330,6 +330,7 @@ def test_full_scan_and_excel(tmp_path=None):
     assert "VCPCO" in set(s["VCP"]["symbol"])
     assert "SKYCO" in set(s["Blue Sky"]["symbol"])
     assert "EPCO" in set(s["Episodic Pivot"]["symbol"])
+    assert "ATRCO" in set(s["ATR Entry"]["symbol"])
     assert "IPOCO" in set(s["IPO Base"]["symbol"])
     assert "MURCO" in set(s["Murphy"]["symbol"])
     assert "BASECO" in set(s["Base Breakout"]["symbol"])
@@ -358,6 +359,34 @@ def test_quarter_summary():
     short = ibs.quarter_summary(stmt.iloc[:, :2])                  # no year-ago quarter
     assert short["sales_yoy"] is None and short["opm_qoq"] == 5.0
     assert ibs.quarter_summary(None) == {} and ibs.quarter_summary(pd.DataFrame()) == {}
+
+
+def atr_entry_stock():
+    """Quiet for a year, then six +1% days that clear SMA70 + 2 ATR."""
+    df = make_series([(0, 100), (260, 100)], noise=0.003, seed=11)
+    n = len(df)
+    for j in range(n - 6, n):                               # six up days of +1%
+        base = df["Close"].iloc[j - 1] * 1.01
+        df.iloc[j, :4] = [base * 0.997, base * 1.003, base * 0.995, base]
+    return df
+
+
+def test_atr_entry():
+    cfg = ibs.ScanConfig(atr_use_rs=False)
+    df = atr_entry_stock()
+    m = ibs.find_atr_entry(df, cfg)
+    assert m["atr_entry"] and m["atr_in_zone"] and 0 <= m["atr_days_ago"] <= 4, m
+    assert m["atr_pct_from_line"] >= 0 and m["atr_ext"] <= 7
+    # 10 flat sessions later the signal is outside the 5-session window
+    longer = pd.concat([df, df.iloc[-1:].reindex(pd.bdate_range(df.index[-1], periods=11)[1:]).ffill()])
+    assert not ibs.find_atr_entry(longer, cfg)["atr_entry"]
+    # over-extended: a 7-ATR cap of 0.5 blocks it
+    assert not ibs.find_atr_entry(df, ibs.ScanConfig(atr_use_rs=False, atr_max_ext=0.5))["atr_entry"]
+    # a flat stock never signals
+    assert not ibs.find_atr_entry(make_series([(0, 100), (300, 100)], seed=3), cfg)["atr_entry"]
+    # RS filter: the stock rose 6% while the index rose 20% over those days -> RS below its average
+    bench = pd.Series(np.r_[np.full(len(df) - 6, 100.0), np.linspace(104, 125, 6)], index=df.index)
+    assert not ibs.find_atr_entry(df, ibs.ScanConfig(), bench)["atr_entry"]
 
 
 if __name__ == "__main__":

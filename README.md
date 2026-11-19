@@ -25,6 +25,7 @@ Updated automatically after every market close: VCP, Blue Sky, Murphy trend-foll
 | **50 EMA Pullback** | Leaders (RS ≥ 80) in an uptrend that ran 8%+ above the 50-day EMA and are now back within 3% of it |
 | **Ichimoku** | Adaptive Ichimoku: a scored Tenkan/Kijun cross, a cloud breakout on volume, or a cloud retest in the last 5 sessions, with an entry, stop and targets |
 | **Episodic Pivot** | Pradeep Bonde style: a **gap up or well above-average move on 3×+ volume** (earnings or other news) in the last month, still above that day's low |
+| **ATR Entry** | First close **2 ATR above the 70-day SMA** with +DI > −DI, RS line above its average and not over-extended (the green circle of the RS Line + Buy Signals indicator) |
 | **IPO Base** | Recent listings basing just under their post-listing high |
 | **Murphy** | John Murphy's positional trend-following: above a rising 40-week SMA, then a fresh 10/50 crossover, 4-week-rule breakout, or crossover + 2-week breakout |
 
@@ -180,6 +181,12 @@ After Pradeep Bonde's Episodic Pivot: new information (earnings, an order, a pol
 - closed in the upper half of the day's range.
 
 It must not have closed below the EP day's low since. `ep_neglected` marks stocks that were up no more than 10% in the three months before (the classic EP context). The daily scan checks Yahoo's earnings dates for each match and sets `ep_catalyst` to *Earnings* or *News / volume*. The EP day's low is the usual stop.
+</details>
+
+<details>
+<summary><b>ATR Entry</b></summary>
+
+The green buy circle of the "RS Line + Buy Signals" TradingView indicator. The entry line is the `atr_entry_ma` (70)-day SMA plus `atr_entry_mult` (2) × ATR(14). The signal is the first close at or above that line while +DI > −DI (Wilder DMI, 14), the RS line is above its `atr_rs_ma` (50)-day average (`atr_use_rs`), and the stock is no more than `atr_max_ext` (7) ATRs above its 50-day SMA. Listed when the latest signal came in the last `atr_signal_days` (5) sessions; `atr_in_zone` says whether it is still above the line.
 </details>
 
 <details>

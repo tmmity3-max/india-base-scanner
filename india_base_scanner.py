@@ -20,6 +20,8 @@ Screens
                      40-week SMA, then a fresh 10/50-day crossover, 4-week-rule
                      breakout, or crossover confirmed by a 2-week breakout.
                      Stop below the 2-week low.
+7. ATR Entry       - First close 2 ATR above the 70-day SMA with +DI > -DI,
+                     the RS line above its average and not over-extended.
 
 Every threshold lives in ``ScanConfig`` so you can tune or combine them.
 
@@ -484,6 +486,16 @@ class ScanConfig:
     pb_lookback: int = 40                 # bars in which the stock must have been extended
     pb_min_extension: float = 8.0         # % above the EMA it had reached in that time
     pb_touch_days: int = 5                # sessions a touch of the EMA stays "recent"
+
+    # --- ATR Entry (the green circle of the "RS Line + Buy Signals" indicator) ---
+    atr_entry_ma: int = 70                # close at least atr_entry_mult x ATR above this SMA
+    atr_entry_mult: float = 2.0
+    atr_len: int = 14                     # ATR and DMI length (Wilder)
+    atr_use_rs: bool = True               # RS line (vs the benchmark) above its average
+    atr_rs_ma: int = 50
+    atr_max_ext: float = 7.0              # skip stocks more than this many ATRs above the 50 SMA (0 = off)
+    atr_ext_ma: int = 50
+    atr_signal_days: int = 5              # the signal fired in the last N sessions
 
     # --- Shared ---
     breakout_window: int = 5              # bars in which a breakout counts as "recent"
@@ -1346,6 +1358,57 @@ def rs_raw_score(close: pd.Series) -> float:
     return 0.4 * r(63) + 0.2 * r(126) + 0.2 * r(189) + 0.2 * r(252)
 
 
+def find_atr_entry(df: pd.DataFrame, cfg: ScanConfig, bench: Optional[pd.Series] = None) -> dict:
+    """ATR Entry: the first close at least ``atr_entry_mult`` ATRs above the
+    ``atr_entry_ma``-day SMA, the green buy circle of the "RS Line + Buy
+    Signals" TradingView indicator. On that bar these filters must also pass:
+
+    * +DI above -DI (Wilder DMI, ``atr_len``): the trend points up;
+    * the RS line (stock / benchmark) above its ``atr_rs_ma``-day average, when
+      ``atr_use_rs`` and a benchmark is given;
+    * no more than ``atr_max_ext`` ATRs above the ``atr_ext_ma``-day SMA,
+      measured as (close / SMA - 1) / (ATR / close), so very stretched stocks drop out.
+
+    The signal is the first bar of that zone (in the zone, not in it the bar
+    before). Listed when the latest signal fired in the last ``atr_signal_days``.
+    """
+    out = {"atr_entry": False, "atr_signal_date": "", "atr_days_ago": np.nan, "atr_line": np.nan,
+           "atr_pct_from_line": np.nan, "atr_ext": np.nan, "atr_in_zone": False}
+    n = len(df)
+    if n < max(cfg.atr_entry_ma, cfg.atr_ext_ma) + cfg.atr_signal_days + 2:
+        return out
+    h, l, c = df["High"], df["Low"], df["Close"]
+    a = 1 / cfg.atr_len
+    tr = pd.concat([h - l, (h - c.shift()).abs(), (l - c.shift()).abs()], axis=1).max(axis=1)
+    atr = tr.ewm(alpha=a, adjust=False).mean()
+    up, dn = h.diff(), -l.diff()
+    pdm = pd.Series(np.where((up > dn) & (up > 0), up, 0.0), index=df.index).ewm(alpha=a, adjust=False).mean()
+    mdm = pd.Series(np.where((dn > up) & (dn > 0), dn, 0.0), index=df.index).ewm(alpha=a, adjust=False).mean()
+    line = c.rolling(cfg.atr_entry_ma).mean() + cfg.atr_entry_mult * atr
+    sma_x = c.rolling(cfg.atr_ext_ma).mean()
+    ext = (c / sma_x - 1) / (atr / c)
+    zone = (c >= line) & (pdm > mdm)
+    if cfg.atr_max_ext:
+        zone &= ext <= cfg.atr_max_ext
+    if cfg.atr_use_rs and bench is not None:
+        b = bench.reindex(df.index).ffill()
+        rs = c / b
+        zone &= rs >= rs.rolling(cfg.atr_rs_ma).mean()
+    zone = zone.fillna(False).to_numpy(bool)
+    sig = zone & ~np.r_[False, zone[:-1]]
+    last = np.flatnonzero(sig[n - cfg.atr_signal_days:])
+    out.update(atr_line=_r2(line.iloc[-1]), atr_ext=_r2(ext.iloc[-1]), atr_in_zone=bool(zone[-1]),
+               atr_pct_from_line=_r2((c.iloc[-1] / line.iloc[-1] - 1) * 100))
+    if len(last):
+        d = n - cfg.atr_signal_days + int(last[-1])
+        out.update(atr_entry=True, atr_signal_date=df.index[d].strftime("%Y-%m-%d"), atr_days_ago=n - 1 - d)
+    return out
+
+
+def _r2(x) -> float:
+    return round(float(x), 2) if x == x and x is not None and np.isfinite(x) else np.nan
+
+
 def rs_line(close: pd.Series, bench: Optional[pd.Series]) -> Optional[pd.Series]:
     """Price relative to the benchmark (stock / index), aligned on dates."""
     if bench is None:
@@ -1439,6 +1502,9 @@ def analyze_stock(df: pd.DataFrame, cfg: ScanConfig,
 
     # --- 50 EMA Pullback ---
     m.update(find_pullback(df, cfg))
+
+    # --- ATR Entry ---
+    m.update(find_atr_entry(df, cfg, bench))
     return m
 
 
@@ -1475,6 +1541,9 @@ SCREEN_COLUMNS = {
                         "pb_pct_from_ema", "pb_days_since_touch", "pb_from_high", "vol_dryup",
                         "vol_ratio", "rs_line_new_high", "turnover_cr", "pct_from_52w_high",
                         "pct_above_52w_low"],
+    "ATR Entry": ["symbol", "industry", "close", "rs_rating", "atr_signal_date", "atr_days_ago",
+                  "atr_line", "atr_pct_from_line", "atr_in_zone", "atr_ext", "vol_ratio",
+                  "rs_line_new_high", "turnover_cr", "pct_from_52w_high", "pct_above_52w_low"],
     "IPO Base": ["symbol", "industry", "close", "listed_days", "ipo_high",
                  "ipo_pct_from_high", "ipo_base_days", "ipo_depth", "vol_ratio",
                  "turnover_cr", "pct_from_52w_high", "pct_above_52w_low"],
@@ -1527,13 +1596,16 @@ def apply_screens(metrics: pd.DataFrame, cfg: ScanConfig) -> Dict[str, pd.DataFr
         "Base Breakout": liquid & m["base_bo"] & (m["rs_rating"].fillna(0) >= cfg.base_min_rs),
         "Ichimoku": liquid & m["ichimoku"],
         "50 EMA Pullback": liquid & m["pullback"] & (m["rs_rating"].fillna(0) >= cfg.pb_min_rs),
+        "ATR Entry": liquid & m["atr_entry"],
     }
     sort_by = {"Trend Template": "rs_rating", "VCP": "rs_rating", "Blue Sky": "rs_rating",
                "Episodic Pivot": ["ep_days_ago", "ep_rvol"], "IPO Base": "ipo_base_days",
                "Murphy": "murphy_days_ago", "Base Breakout": "base_pct_from_pivot",
-               "Ichimoku": "ich_days_ago", "50 EMA Pullback": "rs_rating"}
+               "Ichimoku": "ich_days_ago", "50 EMA Pullback": "rs_rating",
+               "ATR Entry": ["atr_days_ago", "rs_rating"]}
     ascending = {"Murphy": True, "Ichimoku": True,   # newest signals first
-                 "Episodic Pivot": [True, False]}   # newest first, then heaviest volume
+                 "Episodic Pivot": [True, False],
+                 "ATR Entry": [True, False]}       # newest signal first, then strongest RS   # newest first, then heaviest volume
     out = {}
     for name, mask in masks.items():
         cols = [c for c in SCREEN_COLUMNS[name] if c in m.columns]

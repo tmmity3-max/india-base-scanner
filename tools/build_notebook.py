@@ -40,6 +40,7 @@ Free, open-source **base & breakout screens for NSE stocks**. Today's results ar
 | **50 EMA Pullback** | Leaders (RS ≥ 80) in an uptrend that ran 8%+ above the 50-day EMA and are now back within 3% of it |
 | **Ichimoku** | Adaptive Ichimoku: a scored Tenkan/Kijun cross, a cloud breakout on volume, or a cloud retest in the last 5 sessions, with an entry, stop and targets |
 | **Episodic Pivot** | Pradeep Bonde style: a **gap up or well above-average move on 3×+ volume** (earnings or other news) in the last month, still above that day's low |
+| **ATR Entry** | First close **2 ATR above the 70-day SMA** with +DI > −DI, RS line above its average and not over-extended (the green circle of the RS Line + Buy Signals indicator) |
 | **IPO Base** | Recent listings basing just under their post-listing high |
 | **Murphy** | John Murphy's positional trend-following: price above a rising 40-week SMA, then a fresh 10/50 crossover, 4-week-rule breakout, or crossover + 2-week breakout |
 
@@ -129,7 +130,7 @@ ibs.plot_stock(SYMBOL, data, result, bars=BARS);
 """, form=True),
     code("""
 #@title Chart the top matches of one screen
-SCREEN = "VCP"  #@param ["VCP", "Blue Sky", "Murphy", "Base Breakout", "50 EMA Pullback", "Ichimoku", "Episodic Pivot", "IPO Base", "Trend Template"]
+SCREEN = "VCP"  #@param ["VCP", "Blue Sky", "Murphy", "Base Breakout", "50 EMA Pullback", "Ichimoku", "Episodic Pivot", "ATR Entry", "IPO Base", "Trend Template"]
 TOP_N = 6  #@param {type:"slider", min:1, max:20, step:1}
 for sym in result.screens[SCREEN]["symbol"].head(TOP_N):
     ibs.plot_stock(sym, data, result)
@@ -155,6 +156,7 @@ except ImportError:
 - **Base Breakout:** a base starts at a swing high (the pivot) and counts once price has spent 3+ weeks below it with a 5-35% pullback. A close above the pivot, above the 50 and 200-day SMAs, is the breakout. Bases are numbered B1, B2, ... and the count restarts when a base undercuts the low of the one before. Each listed stock has a stage in `base_state`: Forming (a new base, close above the 50-day EMA), Fresh breakout (last 5 sessions, within 7% above), Climbing (broke out up to 60 sessions ago and holding) or Played out (the breakout failed: closed back under the pivot). RS must be 65 or more.
 - **50 EMA Pullback:** RS of 80 or more, in an uptrend (close above the 200 SMA, 50 EMA above it and rising), ran 8%+ above the 50 EMA in the last 40 sessions and now closes within 2% under to 3% over it. `pb_stage` says whether it is at the EMA, bouncing or approaching.\n- **Ichimoku:** adaptive Ichimoku (periods 9 / 26 / 52 that shorten in high volatility and lengthen in low). Listed when a bullish signal fired in the last 5 sessions with nothing bearish since: a Tenkan cross above Kijun scoring 50+ on eight factors, a close up through the cloud on 1.3x volume, or a retest of the cloud edge. `ich_entry`, `ich_sl` and `ich_tp1` give the setup. Rules follow the Adaptive Ichimoku Nexus indicator by WillyAlgoTrader.
 - **Episodic Pivot:** after Pradeep Bonde. In the last month (21 sessions) the stock gapped up 3%+ and held it, or gained 4%+ and at least twice its 20-day average range, on 3x+ its 50-day average volume and ₹5 crore+ turnover, closing in the upper half of the day, and has not closed below that day's low since. `ep_neglected` = the stock had done little in the 3 months before. On the website, `ep_catalyst` says whether Yahoo shows results on or just before the EP day; abnormal volume without results means check the news.
+- **ATR Entry:** the first close at least 2 ATR(14) above the 70-day SMA, with +DI above -DI, the RS line above its 50-day average and no more than 7 ATR above the 50-day SMA, in the last 5 sessions. This is the green buy circle of the RS Line + Buy Signals TradingView indicator. `atr_in_zone` = still above the line.
 - **IPO Base:** listed 20-500 trading days ago, based 10+ days below the post-listing high with a depth of 35% or less, and now within 8% of that high.
 - **Murphy:** John Murphy's positional trend-following. Weekly filter from completed weeks only (no repainting): price above a rising 40-week SMA (or weekly MACD above signal, or both). Daily entry: 10-day SMA crossing above the 50-day, the 4-week rule (close above the high of the last 4 full weeks), or a crossover confirmed by a 2-week breakout. Lists stocks whose entry signal fired in the last 5 sessions. The same rules as a free TradingView indicator: `pine/murphy_trend_following.pine` in the GitHub repo.
 - **Liquidity:** every screen needs price ≥ ₹50 and 50-day average turnover ≥ ₹1 crore. RS is ranked among those liquid stocks only.

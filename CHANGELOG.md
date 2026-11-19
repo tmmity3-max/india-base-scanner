@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- New **ATR Entry** screen: the first close 2 ATR above the 70-day SMA with +DI > −DI, the RS line above its 50-day average and no more than 7 ATR above the 50-day SMA, in the last 5 sessions (the green circle of the RS Line + Buy Signals indicator). On the website, in the notebook and in the Excel export.
 - Website: every filter now sits in one box behind a gear Filters button, with quick buttons for market cap and for daily turnover (₹1, 5, 10 or 50 crore+). Each screen keeps its own filters, and changes take effect only when you press Apply (Cancel discards them).
 - Website: the table shows as many rows as fit on the screen, with Prev / Next pages, so the sideways scrollbar is always in view; the Stock column stays fixed when scrolling sideways. The chart's width and height handles stop where the table and chart still fit side by side on the screen.
 - Website: drag the bar between the table and the chart to resize them, and the bar under the chart to change its height (kept in your browser; double-click to reset). Smaller text across the page.

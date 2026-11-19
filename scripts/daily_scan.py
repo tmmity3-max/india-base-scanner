@@ -81,6 +81,7 @@ def chart_payload(sym: str, df: pd.DataFrame, result: ibs.ScanResult, fund: dict
     levels = []
     for key, flag, label in (("vcp_pivot", "vcp", "VCP pivot"),
                              ("ep_low", "ep", "EP day low"),
+                             ("atr_line", "atr_entry", "ATR entry line"),
                              ("ipo_high", "ipo_base", "IPO high"),
                              ("ath", "bluesky", "All-time high"),
                              ("murphy_entry", "murphy", "Murphy entry"),
