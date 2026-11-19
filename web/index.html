@@ -62,8 +62,20 @@
         <span class="sr">Search stocks</span>
         <input id="search" type="search" placeholder="Filter by stock or industry" autocomplete="off">
       </label>
-      <div class="seg" id="mcapSeg" role="group" aria-label="Market cap"></div>
-      <button type="button" class="filter-btn" id="filterBtn" aria-expanded="false" aria-controls="filters">Filters</button>
+      <div class="filter-wrap" id="filterWrap">
+        <button type="button" class="filter-btn" id="filterBtn" aria-expanded="false" aria-controls="filters" title="Filters">
+          <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path fill="currentColor" d="M19.4 13a7.5 7.5 0 0 0 0-2l2.1-1.6a.5.5 0 0 0 .1-.6l-2-3.5a.5.5 0 0 0-.6-.2l-2.5 1a7.3 7.3 0 0 0-1.7-1l-.4-2.6a.5.5 0 0 0-.5-.4h-4a.5.5 0 0 0-.5.4l-.4 2.6a7.3 7.3 0 0 0-1.7 1l-2.5-1a.5.5 0 0 0-.6.2l-2 3.5a.5.5 0 0 0 .1.6L4.6 11a7.5 7.5 0 0 0 0 2l-2.1 1.6a.5.5 0 0 0-.1.6l2 3.5c.1.2.4.3.6.2l2.5-1c.5.4 1.1.7 1.7 1l.4 2.6c0 .2.3.4.5.4h4c.2 0 .5-.2.5-.4l.4-2.6c.6-.3 1.2-.6 1.7-1l2.5 1c.2.1.5 0 .6-.2l2-3.5a.5.5 0 0 0-.1-.6L19.4 13ZM12 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7Z"/></svg>
+          <span id="filterBtnText">Filters</span>
+        </button>
+        <section class="filters" id="filters" aria-label="Filters" hidden>
+          <div class="filter-quick">
+            <div class="seg" id="mcapSeg" role="group" aria-label="Market cap"></div>
+            <div class="seg" id="turnoverSeg" role="group" aria-label="Daily turnover"></div>
+          </div>
+          <div class="filter-fields" id="filterFields"></div>
+          <p class="filter-note">Filters apply to every screen and are remembered on this device. A stock with no value for a filter you set is left out. Daily turnover is the 50-day average. <button type="button" id="filterReset" class="link-btn">Clear all</button></p>
+        </section>
+      </div>
       <span id="count" class="count"></span>
       <div class="tool-right">
         <div class="seg" id="perRow" role="group" aria-label="Charts per row" hidden>
@@ -78,10 +90,6 @@
         </div>
       </div>
     </div>
-    <section class="filters" id="filters" aria-label="Filters" hidden>
-      <div class="filter-fields" id="filterFields"></div>
-      <p class="filter-note">Filters apply to every screen and are remembered on this device. A stock with no value for a filter you set is left out. <button type="button" id="filterReset" class="link-btn">Clear all</button></p>
-    </section>
     <div id="empty" class="empty" hidden></div>
 
     <section class="workspace" id="workspace">

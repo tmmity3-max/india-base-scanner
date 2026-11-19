@@ -983,15 +983,19 @@
     $("search").addEventListener("input", (e) => { state.query = e.target.value.trim().toLowerCase(); refreshList(); });
     $("closeChart").addEventListener("click", () => $("chartPanel").classList.remove("open"));
     renderFilters();
-    renderMcap();
+    renderQuick();
     const fn = activeFilters();
-    $("filterBtn").textContent = fn ? `Filters (${fn})` : "Filters";
+    $("filterBtnText").textContent = fn ? `Filters (${fn})` : "Filters";
     $("filterBtn").classList.toggle("on", fn > 0);
-    $("filterBtn").addEventListener("click", () => {
-      const open = $("filters").hidden;
+    const showFilters = (open) => {
       $("filters").hidden = !open;
       $("filterBtn").setAttribute("aria-expanded", open ? "true" : "false");
-    });
+    };
+    $("filterBtn").addEventListener("click", () => showFilters($("filters").hidden));
+    // the filter box floats over the page: a click outside it or Escape closes it
+    // (composedPath, because a clicked quick button is redrawn before this runs)
+    document.addEventListener("click", (e) => { if (!$("filters").hidden && !e.composedPath().includes($("filterWrap"))) showFilters(false); });
+    document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("filters").hidden) showFilters(false); });
     $("filterReset").addEventListener("click", resetFilters);
     $("basesBtn").setAttribute("aria-pressed", state.showBases ? "true" : "false");
     $("basesBtn").addEventListener("click", () => setBases(!state.showBases));
@@ -1138,31 +1142,36 @@
     cb.addEventListener("change", () => { if (cb.checked) state.filters.rsHigh = true; else delete state.filters.rsHigh; filtersChanged(); });
     box.appendChild(l);
   }
-  // quick market-cap buttons: the scan's own floor, or a higher one
-  const MCAP_STEPS = [1000, 2000];
-  function renderMcap() {
-    const box = $("mcapSeg"), floor = (state.data && state.data.min_mcap_cr) || 500;
-    const cur = state.filters.mcap != null && state.filters.mcap > floor ? state.filters.mcap : floor;
-    box.innerHTML = `<span class="seg-label">Market cap</span>`;
-    for (const v of [floor, ...MCAP_STEPS.filter((x) => x > floor)]) {
+  // quick buttons inside the filter box: the scan's own floor, or a higher one.
+  // They set the same filter as the matching number field.
+  function quickSeg(boxId, key, label, floor, steps) {
+    const box = $(boxId);
+    const cur = state.filters[key] != null && state.filters[key] > floor ? state.filters[key] : floor;
+    box.innerHTML = `<span class="seg-label">${label}</span>`;
+    for (const v of [floor, ...steps.filter((x) => x > floor)]) {
       const b = document.createElement("button");
       b.type = "button";
       b.textContent = `₹${nf0.format(v)} cr+`;
       b.setAttribute("aria-pressed", cur === v ? "true" : "false");
       b.addEventListener("click", () => {
-        if (v === floor) delete state.filters.mcap; else state.filters.mcap = v;
-        const inp = document.querySelector('[data-filter="mcap"]');
+        if (v === floor) delete state.filters[key]; else state.filters[key] = v;
+        const inp = document.querySelector(`[data-filter="${key}"]`);
         if (inp) inp.value = v === floor ? "" : v;
         filtersChanged();
       });
       box.appendChild(b);
     }
   }
+  function renderQuick() {
+    const d = state.data || {};
+    quickSeg("mcapSeg", "mcap", "Market cap", d.min_mcap_cr || 500, [1000, 2000]);
+    quickSeg("turnoverSeg", "turnover", "Daily turnover", d.min_turnover_cr || 1, [5, 10, 50]);
+  }
   function filtersChanged() {
     saveFilters();
-    renderMcap();
+    renderQuick();
     const n = activeFilters();
-    $("filterBtn").textContent = n ? `Filters (${n})` : "Filters";
+    $("filterBtnText").textContent = n ? `Filters (${n})` : "Filters";
     $("filterBtn").classList.toggle("on", n > 0);
     for (const b of $("screens").children) b.querySelector(".n").textContent = screenRows(b.dataset.screen).length;
     refreshList();

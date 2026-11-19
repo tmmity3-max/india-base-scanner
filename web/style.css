@@ -167,13 +167,21 @@ body.resizing { user-select: none; }
 .stage[aria-pressed="true"] .n { color: var(--saffron-ink); }
 
 /* Filters */
+.filter-wrap { position: relative; }
 .filter-btn {
   appearance: none; cursor: pointer; font: 600 13px/1 var(--body); color: var(--ink);
-  background: var(--surface); border: 1px solid var(--grid); border-radius: 9px; padding: 9px 12px;
+  background: var(--surface); border: 1px solid var(--grid); border-radius: 9px; padding: 8px 12px;
+  display: inline-flex; align-items: center; gap: 7px;
 }
+.filter-btn svg { color: var(--ink-2); transition: transform .3s; }
+.filter-btn[aria-expanded="true"] svg { transform: rotate(60deg); }
 .filter-btn:hover { border-color: var(--ink-3); }
 .filter-btn.on { border-color: var(--saffron); color: var(--saffron-ink); }
-.filters { background: var(--surface); border: 1px solid var(--grid); border-radius: 10px; padding: 12px 14px; margin-bottom: 12px; }
+.filters { position: absolute; top: calc(100% + 8px); left: 0; z-index: 40; width: min(640px, 92vw);
+  background: var(--surface); border: 1px solid var(--grid); border-radius: 10px; padding: 14px;
+  box-shadow: 0 12px 36px rgba(10, 20, 40, .35); }
+.filter-quick { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; margin-bottom: 14px; padding-bottom: 14px; border-bottom: 1px solid var(--grid); }
+.filter-quick .seg-label { min-width: 92px; }
 .filters[hidden] { display: none; }
 .filter-fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px 14px; align-items: end; }
 .filter-fields label { display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; color: var(--ink-2); }
