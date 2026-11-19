@@ -81,20 +81,24 @@
     ["near", "Within % of 52-week high", (r, v) => r.pct_from_52w_high != null && -r.pct_from_52w_high <= v],
   ];
   const FKEY = "ibs-filters";
+  // Filters are kept separately for each screen: { "VCP": {rs: 80}, "Murphy": {...} }
   function loadFilters() {
-    try { return JSON.parse(localStorage.getItem(FKEY) || "{}") || {}; } catch (e) { return {}; }
+    let all = {};
+    try { all = JSON.parse(localStorage.getItem(FKEY) || "{}") || {}; } catch (e) { return {}; }
+    const old = FILTERS.some(([k]) => k in all) || "rsHigh" in all;   // the earlier one-for-all format
+    return old ? {} : all;
   }
   function saveFilters() {
-    try { localStorage.setItem(FKEY, JSON.stringify(state.filters)); } catch (e) { /* private window */ }
+    try { localStorage.setItem(FKEY, JSON.stringify(state.filtersAll)); } catch (e) { /* private window */ }
   }
-  function passes(r) {
-    const f = state.filters;
+  const filtersFor = (screen) => state.filtersAll[screen] || {};
+  function passes(r, f) {
     for (const [key, , test] of FILTERS) if (f[key] != null && !test(r, f[key])) return false;
     if (f.rsHigh && r.rs_line_new_high !== undefined && !r.rs_line_new_high) return false;
     return true;
   }
-  const activeFilters = () => FILTERS.filter(([k]) => state.filters[k] != null).length + (state.filters.rsHigh ? 1 : 0);
-  const screenRows = (name) => (state.data.screens[name] || []).filter(passes);
+  const activeFilters = (f = filtersFor(state.screen)) => FILTERS.filter(([k]) => f[k] != null).length + (f.rsHigh ? 1 : 0);
+  const screenRows = (name) => { const f = filtersFor(name); return (state.data.screens[name] || []).filter((r) => passes(r, f)); };
 
   // column: [label, kind]  kind: txt | num | pct | signed | x | bool | int
   const COLS = {
@@ -135,7 +139,8 @@
   const $ = (id) => document.getElementById(id);
   const state = { data: null, screen: "VCP", sort: null, dir: -1, query: "", symbol: null, view: "table", perRow: 2,
                   stage: null, filters: {}, showBases: true, page: 0, perPage: 20, listKey: "" };
-  state.filters = loadFilters();
+  state.filtersAll = loadFilters();
+  state.draft = {};                                         // edits in the open filter box, applied on Apply
   try { state.showBases = localStorage.getItem("ibs-bases") !== "0"; } catch (e) { /* private window */ }
   const chartCache = new Map();
 
@@ -982,20 +987,18 @@
 
     $("search").addEventListener("input", (e) => { state.query = e.target.value.trim().toLowerCase(); refreshList(); });
     $("closeChart").addEventListener("click", () => $("chartPanel").classList.remove("open"));
-    renderFilters();
-    renderQuick();
-    const fn = activeFilters();
-    $("filterBtnText").textContent = fn ? `Filters (${fn})` : "Filters";
-    $("filterBtn").classList.toggle("on", fn > 0);
-    const showFilters = (open) => {
-      $("filters").hidden = !open;
-      $("filterBtn").setAttribute("aria-expanded", open ? "true" : "false");
-    };
+    updateFilterBtn();
     $("filterBtn").addEventListener("click", () => showFilters($("filters").hidden));
+    $("filterApply").addEventListener("click", applyFilters);
+    $("filterCancel").addEventListener("click", () => showFilters(false));
     // the filter box floats over the page: a click outside it or Escape closes it
     // (composedPath, because a clicked quick button is redrawn before this runs)
     document.addEventListener("click", (e) => { if (!$("filters").hidden && !e.composedPath().includes($("filterWrap"))) showFilters(false); });
-    document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("filters").hidden) showFilters(false); });
+    document.addEventListener("keydown", (e) => {
+      if ($("filters").hidden) return;
+      if (e.key === "Escape") showFilters(false);
+      if (e.key === "Enter" && e.target.matches && e.target.matches("#filters input")) { e.preventDefault(); applyFilters(); }
+    });
     $("filterReset").addEventListener("click", resetFilters);
     $("basesBtn").setAttribute("aria-pressed", state.showBases ? "true" : "false");
     $("basesBtn").addEventListener("click", () => setBases(!state.showBases));
@@ -1045,6 +1048,8 @@
 
   function selectScreen(name, initial = false) {
     state.screen = name;
+    if (!$("filters").hidden) showFilters(false);            // the box belongs to the screen it was opened on
+    updateFilterBtn();
     state.sort = null;
     state.stage = defaultStage(name);
     for (const b of $("screens").children) b.setAttribute("aria-selected", b.dataset.screen === name ? "true" : "false");
@@ -1126,11 +1131,11 @@
       const l = document.createElement("label");
       l.innerHTML = `<span>${label}</span><input type="number" inputmode="decimal" min="0" step="any" data-filter="${key}" placeholder="Any">`;
       const inp = l.querySelector("input");
-      if (state.filters[key] != null) inp.value = state.filters[key];
+      if (state.draft[key] != null) inp.value = state.draft[key];
       inp.addEventListener("input", () => {
         const v = parseFloat(inp.value);
-        if (Number.isFinite(v)) state.filters[key] = v; else delete state.filters[key];
-        filtersChanged();
+        if (Number.isFinite(v)) state.draft[key] = v; else delete state.draft[key];
+        renderQuick();
       });
       box.appendChild(l);
     }
@@ -1138,15 +1143,16 @@
     l.className = "check";
     l.innerHTML = `<input type="checkbox" data-filter="rsHigh"><span>RS line at a 52-week high</span>`;
     const cb = l.querySelector("input");
-    cb.checked = !!state.filters.rsHigh;
-    cb.addEventListener("change", () => { if (cb.checked) state.filters.rsHigh = true; else delete state.filters.rsHigh; filtersChanged(); });
+    cb.checked = !!state.draft.rsHigh;
+    cb.addEventListener("change", () => { if (cb.checked) state.draft.rsHigh = true; else delete state.draft.rsHigh; });
     box.appendChild(l);
   }
   // quick buttons inside the filter box: the scan's own floor, or a higher one.
   // They set the same filter as the matching number field.
   function quickSeg(boxId, key, label, floor, steps) {
     const box = $(boxId);
-    const cur = state.filters[key] != null && state.filters[key] > floor ? state.filters[key] : floor;
+    const f = state.draft;
+    const cur = f[key] != null && f[key] > floor ? f[key] : floor;
     box.innerHTML = `<span class="seg-label">${label}</span>`;
     for (const v of [floor, ...steps.filter((x) => x > floor)]) {
       const b = document.createElement("button");
@@ -1154,10 +1160,10 @@
       b.textContent = `₹${nf0.format(v)} cr+`;
       b.setAttribute("aria-pressed", cur === v ? "true" : "false");
       b.addEventListener("click", () => {
-        if (v === floor) delete state.filters[key]; else state.filters[key] = v;
+        if (v === floor) delete f[key]; else f[key] = v;
         const inp = document.querySelector(`[data-filter="${key}"]`);
         if (inp) inp.value = v === floor ? "" : v;
-        filtersChanged();
+        renderQuick();
       });
       box.appendChild(b);
     }
@@ -1167,19 +1173,36 @@
     quickSeg("mcapSeg", "mcap", "Market cap", d.min_mcap_cr || 500, [1000, 2000]);
     quickSeg("turnoverSeg", "turnover", "Daily turnover", d.min_turnover_cr || 1, [5, 10, 50]);
   }
-  function filtersChanged() {
-    saveFilters();
-    renderQuick();
+  function updateFilterBtn() {
     const n = activeFilters();
     $("filterBtnText").textContent = n ? `Filters (${n})` : "Filters";
     $("filterBtn").classList.toggle("on", n > 0);
+  }
+  // open the box with a copy of this screen's filters; nothing changes until Apply
+  function showFilters(open) {
+    if (open) {
+      state.draft = { ...filtersFor(state.screen) };
+      $("filterTitle").textContent = `Filters for ${state.screen}`;
+      renderFilters(); renderQuick();
+    }
+    $("filters").hidden = !open;
+    $("filterBtn").setAttribute("aria-expanded", open ? "true" : "false");
+  }
+  function applyFilters() {
+    const d = { ...state.draft };
+    if (Object.keys(d).length) state.filtersAll[state.screen] = d; else delete state.filtersAll[state.screen];
+    showFilters(false);
+    filtersChanged();
+  }
+  function filtersChanged() {
+    saveFilters();
+    updateFilterBtn();
     for (const b of $("screens").children) b.querySelector(".n").textContent = screenRows(b.dataset.screen).length;
     refreshList();
   }
-  function resetFilters() {
-    state.filters = {};
-    renderFilters();
-    filtersChanged();
+  function resetFilters() {                                  // clears the box; Apply to use it
+    state.draft = {};
+    renderFilters(); renderQuick();
   }
 
   function currentRows() {
@@ -1211,7 +1234,7 @@
     }
     if (state.view === "table") {
       // a new screen, stage, filter, search or sort starts again at page 1
-      const key = [state.screen, state.stage, state.query, state.sort, state.dir, JSON.stringify(state.filters)].join("|");
+      const key = [state.screen, state.stage, state.query, state.sort, state.dir, JSON.stringify(filtersFor(state.screen))].join("|");
       if (key !== state.listKey) { state.listKey = key; state.page = 0; }
       const pages = Math.max(1, Math.ceil(list.length / state.perPage));
       state.page = Math.min(state.page, pages - 1);

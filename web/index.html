@@ -68,12 +68,19 @@
           <span id="filterBtnText">Filters</span>
         </button>
         <section class="filters" id="filters" aria-label="Filters" hidden>
+          <h3 class="filter-title" id="filterTitle">Filters</h3>
           <div class="filter-quick">
             <div class="seg" id="mcapSeg" role="group" aria-label="Market cap"></div>
             <div class="seg" id="turnoverSeg" role="group" aria-label="Daily turnover"></div>
           </div>
           <div class="filter-fields" id="filterFields"></div>
-          <p class="filter-note">Filters apply to every screen and are remembered on this device. A stock with no value for a filter you set is left out. Daily turnover is the 50-day average. <button type="button" id="filterReset" class="link-btn">Clear all</button></p>
+          <p class="filter-note">These filters apply to this screen only; each screen keeps its own, remembered on this device. A stock with no value for a filter you set is left out. Daily turnover is the 50-day average.</p>
+          <div class="filter-actions">
+            <button type="button" id="filterReset" class="link-btn">Clear all</button>
+            <span class="spacer"></span>
+            <button type="button" id="filterCancel" class="btn-ghost">Cancel</button>
+            <button type="button" id="filterApply" class="btn-apply">Apply</button>
+          </div>
         </section>
       </div>
       <span id="count" class="count"></span>

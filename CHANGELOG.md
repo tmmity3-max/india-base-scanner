@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Website: every filter now sits in one box behind a gear Filters button, with quick buttons for market cap and for daily turnover (₹1, 5, 10 or 50 crore+).
+- Website: every filter now sits in one box behind a gear Filters button, with quick buttons for market cap and for daily turnover (₹1, 5, 10 or 50 crore+). Each screen keeps its own filters, and changes take effect only when you press Apply (Cancel discards them).
 - Website: the table shows as many rows as fit on the screen, with Prev / Next pages, so the sideways scrollbar is always in view; the Stock column stays fixed when scrolling sideways. The chart's width and height handles stop where the table and chart still fit side by side on the screen.
 - Website: drag the bar between the table and the chart to resize them, and the bar under the chart to change its height (kept in your browser; double-click to reset). Smaller text across the page.
 - Website chart panel: latest quarter's sales, net profit and operating margin, each against the quarter before and the same quarter a year earlier (margin change in percentage points).
