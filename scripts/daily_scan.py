@@ -267,8 +267,12 @@ def main():
     data = ibs.download_prices(uni["symbol"], period=args.period)
     if len(data) < 0.5 * len(uni):
         sys.exit(f"Only {len(data)}/{len(uni)} stocks downloaded - aborting so the site keeps yesterday's data.")
-    # Yahoo sometimes leaves out the latest session for most stocks (seen on a
-    # late-night run): the scan would then use old candles under a new date.
+    # Yahoo's long (period=max) answer often stops a session short for most
+    # stocks. A quick 5-day download fills in the newest candles.
+    gained = ibs.top_up_recent(data)
+    print(f"Top-up: {gained} stocks got newer candles")
+    # If the newest session is still missing for most stocks, the scan would use
+    # old candles under a new date, so keep the last good data instead.
     last_days = pd.Series([df.index[-1].normalize() for df in data.values()])
     newest = last_days.max()
     fresh = (last_days == newest).mean()

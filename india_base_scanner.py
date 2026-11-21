@@ -237,6 +237,56 @@ def download_prices(
     return data
 
 
+def top_up_recent(
+    data: Dict[str, pd.DataFrame],
+    period: str = "5d",
+    chunk_size: int = 100,
+    pause: float = 0.5,
+    suffix: str = ".NS",
+    verbose: bool = True,
+) -> int:
+    """Fill in the latest sessions that a long download left out.
+
+    Yahoo's ``period='max'`` answer sometimes stops a day or more short for
+    most stocks, while a short ``period='5d'`` request has the newest candle.
+    This re-downloads the last few sessions for every symbol and appends any
+    rows newer than what ``data`` already holds. Existing rows are never
+    changed. Returns how many stocks gained at least one new candle.
+    """
+    import yfinance as yf
+
+    symbols = list(data)
+    batches = [symbols[i : i + chunk_size] for i in range(0, len(symbols), chunk_size)]
+    gained = 0
+    for b, batch in enumerate(batches, 1):
+        tickers = [s if s.startswith("^") else s + suffix for s in batch]
+        raw = None
+        for attempt in range(3):
+            try:
+                raw = yf.download(tickers, period=period, interval="1d", group_by="ticker",
+                                  auto_adjust=True, threads=True, progress=False)
+                break
+            except Exception as exc:
+                if attempt == 2:
+                    warnings.warn(f"Top-up batch {b} failed: {exc}")
+                time.sleep(2 * (attempt + 1))
+        for sym, tk in zip(batch, tickers):
+            recent = _extract(raw, tk)
+            if recent is None or recent.empty:
+                continue
+            old = data[sym]
+            newer = recent[recent.index.normalize() > old.index[-1].normalize()]
+            if newer.empty:
+                continue
+            newer = newer[[c for c in old.columns if c in newer.columns]]
+            data[sym] = pd.concat([old, newer]).sort_index()
+            gained += 1
+        if verbose:
+            print(f"  top-up {b}/{len(batches)}: {gained} stocks got newer candles")
+        time.sleep(pause)
+    return gained
+
+
 def download_benchmark(name: str = "NIFTY500", period: str = "max") -> Optional[pd.Series]:
     """Benchmark close series (``NIFTY50`` or ``NIFTY500``) for the RS line."""
     import yfinance as yf
