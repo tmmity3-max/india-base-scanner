@@ -287,6 +287,125 @@ def top_up_recent(
     return gained
 
 
+_BHAV_URLS = (
+    "https://nsearchives.nseindia.com/content/cm/BhavCopy_NSE_CM_0_0_0_{ymd}_F_0000.csv.zip",
+    "https://archives.nseindia.com/content/cm/BhavCopy_NSE_CM_0_0_0_{ymd}_F_0000.csv.zip",
+)
+_IDX_CLOSE_URLS = (
+    "https://nsearchives.nseindia.com/content/indices/ind_close_all_{dmy}.csv",
+    "https://archives.nseindia.com/content/indices/ind_close_all_{dmy}.csv",
+)
+_NSE_INDEX_NAMES = {"NIFTY50": "Nifty 50", "NIFTY500": "Nifty 500"}
+
+
+def _nse_get(urls, timeout: int = 30) -> Optional[bytes]:
+    """First URL that answers with a real file, or None (never raises)."""
+    import requests
+
+    headers = dict(_HEADERS, Accept="*/*", Referer="https://www.nseindia.com/")
+    for url in urls:
+        try:
+            r = requests.get(url, headers=headers, timeout=timeout)
+            if r.status_code == 200 and len(r.content) > 200:
+                return r.content
+        except Exception:
+            continue
+    return None
+
+
+def _recent_weekdays(days: int):
+    """Weekdays from today (India time) going back ``days`` calendar days, oldest first."""
+    today = pd.Timestamp.now(tz="Asia/Kolkata").normalize().tz_localize(None)
+    return [d for d in pd.date_range(today - pd.Timedelta(days=days), today) if d.weekday() < 5]
+
+
+def nse_bhavcopy(day) -> Optional[pd.DataFrame]:
+    """NSE's official end-of-day prices for one session (EQ series), indexed by symbol."""
+    import zipfile
+
+    day = pd.Timestamp(day)
+    blob = _nse_get([u.format(ymd=day.strftime("%Y%m%d")) for u in _BHAV_URLS])
+    if blob is None:
+        return None
+    try:
+        with zipfile.ZipFile(io.BytesIO(blob)) as z:
+            df = pd.read_csv(z.open(z.namelist()[0]))
+        df.columns = [c.strip() for c in df.columns]
+        df = df[df["SctySrs"].astype(str).str.strip() == "EQ"]
+        out = pd.DataFrame({
+            "Open": pd.to_numeric(df["OpnPric"], errors="coerce").values,
+            "High": pd.to_numeric(df["HghPric"], errors="coerce").values,
+            "Low": pd.to_numeric(df["LwPric"], errors="coerce").values,
+            "Close": pd.to_numeric(df["ClsPric"], errors="coerce").values,
+            "Volume": pd.to_numeric(df["TtlTradgVol"], errors="coerce").values,
+        }, index=df["TckrSymb"].astype(str).str.strip().values)
+        return out[~out.index.duplicated()].dropna(subset=["Close"])
+    except Exception as exc:
+        warnings.warn(f"Could not read the NSE bhavcopy for {day.date()}: {exc}")
+        return None
+
+
+def fill_from_bhavcopy(data: Dict[str, pd.DataFrame], days: int = 7, verbose: bool = True) -> int:
+    """Add sessions that Yahoo is missing, using NSE's official bhavcopy.
+
+    Yahoo's NSE data sometimes lacks the newest session for most stocks. For each
+    of the last few weekdays NSE has published, any stock whose data ends before
+    that day gets the day's OHLCV appended. Existing rows are never changed, and
+    a stock is skipped when the jump from its last close is over 40% (likely a
+    split or bonus Yahoo has not applied yet). Returns how many stocks gained rows.
+    """
+    gained = set()
+    for day in _recent_weekdays(days):
+        need = [s for s, df in data.items() if df.index[-1].normalize() < day]
+        if not need:
+            continue
+        bhav = nse_bhavcopy(day)
+        if bhav is None:
+            continue                         # holiday, or not published yet
+        added = 0
+        for sym in need:
+            if sym not in bhav.index:
+                continue
+            row = bhav.loc[sym]
+            old = data[sym]
+            prev = float(old["Close"].iloc[-1])
+            if prev > 0 and abs(float(row["Close"]) / prev - 1) > 0.40:
+                continue
+            new = pd.DataFrame([row[["Open", "High", "Low", "Close", "Volume"]].astype(float)], index=[day])
+            new = new[[c for c in old.columns if c in new.columns]]
+            data[sym] = pd.concat([old, new]).sort_index()
+            gained.add(sym)
+            added += 1
+        if verbose:
+            print(f"  NSE bhavcopy {day.date()}: filled {added} stocks")
+    return len(gained)
+
+
+def fill_benchmark_from_nse(series: Optional[pd.Series], name: str = "NIFTY500", days: int = 7) -> Optional[pd.Series]:
+    """Append index closes Yahoo is missing, from NSE's daily index-close file."""
+    label = _NSE_INDEX_NAMES.get(name.upper())
+    if series is None or series.empty or label is None:
+        return series
+    for day in _recent_weekdays(days):
+        if series.index[-1].normalize() >= day:
+            continue
+        blob = _nse_get([u.format(dmy=day.strftime("%d%m%Y")) for u in _IDX_CLOSE_URLS])
+        if blob is None:
+            continue
+        try:
+            d = pd.read_csv(io.BytesIO(blob))
+            d.columns = [c.strip() for c in d.columns]
+            hit = d[d["Index Name"].astype(str).str.strip().str.lower() == label.lower()]
+            if hit.empty:
+                continue
+            close = float(pd.to_numeric(hit["Closing Index Value"], errors="coerce").iloc[0])
+            if close > 0:
+                series = pd.concat([series, pd.Series([close], index=[day])]).sort_index()
+        except Exception as exc:
+            warnings.warn(f"Could not read NSE index closes for {day.date()}: {exc}")
+    return series
+
+
 def download_benchmark(name: str = "NIFTY500", period: str = "max") -> Optional[pd.Series]:
     """Benchmark close series (``NIFTY50`` or ``NIFTY500``) for the RS line."""
     import yfinance as yf

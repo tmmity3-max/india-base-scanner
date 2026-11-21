@@ -271,6 +271,10 @@ def main():
     # stocks. A quick 5-day download fills in the newest candles.
     gained = ibs.top_up_recent(data)
     print(f"Top-up: {gained} stocks got newer candles")
+    # Yahoo's NSE feed can still lack the newest session for most stocks; take
+    # those days from NSE's own end-of-day file (bhavcopy).
+    filled = ibs.fill_from_bhavcopy(data)
+    print(f"NSE bhavcopy: {filled} stocks got missing sessions")
     # If the newest session is still missing for most stocks, the scan would use
     # old candles under a new date, so keep the last good data instead.
     last_days = pd.Series([df.index[-1].normalize() for df in data.values()])
@@ -280,6 +284,7 @@ def main():
     if fresh < 0.8:
         sys.exit(f"Only {fresh:.0%} of stocks have the {newest.date()} candle - aborting so the site keeps the last good data.")
     bench = ibs.download_benchmark(args.benchmark, period=args.period)
+    bench = ibs.fill_benchmark_from_nse(bench, args.benchmark)
     result = ibs.scan(data, ibs.ScanConfig(), uni, bench)
 
     # heatmap members (NIFTY 50, Next 50, Midcap 150, Smallcap 250); download any not already loaded
