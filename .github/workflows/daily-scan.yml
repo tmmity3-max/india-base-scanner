@@ -48,10 +48,12 @@ jobs:
           if git fetch --depth 1 origin data 2>/dev/null; then
             f="universe_$(echo "$UNIVERSE" | tr 'A-Z' 'a-z').csv"
             git show "FETCH_HEAD:$f" > "/tmp/$f" 2>/dev/null && [ -s "/tmp/$f" ] && mv "/tmp/$f" "out/$f" || true
+            # last good results: fallback fundamentals when Yahoo refuses
+            mkdir -p /tmp/prev && git archive FETCH_HEAD | tar -x -C /tmp/prev || true
           fi
 
       - name: Run the scan
-        run: python scripts/daily_scan.py --universe "$UNIVERSE" --benchmark NIFTY500 --out out
+        run: python scripts/daily_scan.py --universe "$UNIVERSE" --benchmark NIFTY500 --out out --prev /tmp/prev
 
       - name: Publish results to the data branch
         run: |

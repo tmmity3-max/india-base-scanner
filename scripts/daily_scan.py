@@ -253,12 +253,56 @@ def load_universe(name: str, cache_path: str) -> pd.DataFrame:
     return uni
 
 
+def load_fund_cache(prev_dir: str) -> dict:
+    """Last good fundamentals from the previous published data (best effort).
+
+    Prefers fundamentals_cache.json; otherwise rebuilds it from the chart files
+    (full fundamentals) and heatmap.json (market caps) of the last good run.
+    """
+    if not prev_dir or not os.path.isdir(prev_dir):
+        return {}
+    path = os.path.join(prev_dir, "fundamentals_cache.json")
+    cache: dict = {}
+    try:
+        if os.path.exists(path):
+            with open(path) as fh:
+                cache = json.load(fh) or {}
+    except Exception:
+        cache = {}
+    try:
+        hm = os.path.join(prev_dir, "heatmap.json")
+        if os.path.exists(hm):
+            with open(hm) as fh:
+                for rows in (json.load(fh).get("indices") or {}).values():
+                    for r in rows:
+                        if r.get("mcap_cr") and r.get("symbol"):
+                            cache.setdefault(r["symbol"], {}).setdefault("market_cap_cr", r["mcap_cr"])
+        charts = os.path.join(prev_dir, "charts")
+        if os.path.isdir(charts):
+            for name in os.listdir(charts):
+                if not name.endswith(".json"):
+                    continue
+                try:
+                    with open(os.path.join(charts, name)) as fh:
+                        f = json.load(fh).get("fund") or {}
+                except Exception:
+                    continue
+                f = {k: v for k, v in f.items() if k != "qtr" and v is not None}
+                if f:
+                    sym = name[:-5]
+                    cache[sym] = {**f, **cache.get(sym, {})} if os.path.exists(path) else {**cache.get(sym, {}), **f}
+    except Exception as exc:
+        print("  could not read previous fundamentals:", exc)
+    return cache
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--universe", default="ALL_EQ")
     ap.add_argument("--benchmark", default="NIFTY500")
     ap.add_argument("--period", default="max")
     ap.add_argument("--out", default=os.path.join(ROOT, "web", "data"))
+    ap.add_argument("--prev", default="", help="folder with the last published data (fallback fundamentals)")
     args = ap.parse_args()
 
     cache = os.path.join(args.out, f"universe_{args.universe.lower()}.csv")
@@ -305,11 +349,29 @@ def main():
     matched = sorted({s for t in result.screens.values() if not t.empty for s in t["symbol"]})
     heat_syms = sorted({s for m in members.values() for s in m["symbol"]})
     print(f"Fetching fundamentals for {len(set(matched) | set(heat_syms))} stocks...")
-    fund = ibs.fetch_fundamentals(sorted(set(matched) | set(heat_syms)))
-    asked, got = len(set(matched) | set(heat_syms)), sum(1 for v in fund.values() if v)
+    wanted = sorted(set(matched) | set(heat_syms))
+    fund = ibs.fetch_fundamentals(wanted)
+    asked, got = len(wanted), sum(1 for s in wanted if fund.get(s))
     print(f"  got data for {got} stocks")
-    if got < 0.5 * asked:   # Yahoo rate limit: without market caps most stocks would be dropped
-        sys.exit(f"Fundamentals for only {got}/{asked} stocks - aborting so the site keeps the last good data.")
+    # Yahoo sometimes refuses these requests ("Invalid Crumb"). Market caps and
+    # ratios change slowly, so use the last good values for any stock it skipped.
+    cache = load_fund_cache(args.prev)
+    reused = 0
+    for s in wanted:
+        if not fund.get(s) and cache.get(s):
+            fund[s] = dict(cache[s])
+            reused += 1
+    if reused:
+        print(f"  reused last good fundamentals for {reused} stocks")
+    total = sum(1 for s in wanted if fund.get(s))
+    if total < 0.5 * asked:   # without market caps most stocks would be dropped
+        sys.exit(f"Fundamentals for only {total}/{asked} stocks - aborting so the site keeps the last good data.")
+    new_cache = dict(cache)
+    for s, f in fund.items():
+        if f:
+            new_cache[s] = {k: v for k, v in f.items() if k != "qtr"}
+    with open(os.path.join(args.out, "fundamentals_cache.json"), "w") as fh:
+        json.dump(new_cache, fh, separators=(",", ":"), default=_clean)
     ibs.apply_market_cap_filter(result, fund)      # every screen: market cap floor
     charted = sorted({s for t in result.screens.values() if not t.empty for s in t["symbol"]})
     print(f"Fetching latest quarterly results for {len(charted)} charted stocks...")
