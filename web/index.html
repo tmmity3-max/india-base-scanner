@@ -41,6 +41,17 @@
       <svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="7"/><path d="M6 22h6l3-9 3 5 3-7 5 11"/></svg>
       <span>India Base Scanner</span>
     </a>
+    <div class="gsearch" id="gsearch">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5L21 21"/></svg>
+      <input id="gsInput" type="search" placeholder="Search any NSE stock" autocomplete="off" spellcheck="false"
+             role="combobox" aria-label="Search any NSE stock" aria-autocomplete="list" aria-expanded="false" aria-controls="gsList">
+      <kbd aria-hidden="true">/</kbd>
+      <ul class="gs-list" id="gsList" role="listbox" aria-label="Matching stocks" hidden></ul>
+    </div>
+    <button type="button" class="alerts-btn" id="alertsBtn" aria-controls="alerts" aria-expanded="false" title="Telegram alerts">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 16V11a6 6 0 0 1 12 0v5l2 2H4z"/><path d="M10 20a2 2 0 0 0 4 0"/></svg>
+      <span>Alerts</span><b class="alerts-n" id="alertsN" hidden></b>
+    </button>
     <nav class="links">
       <a href="https://colab.research.google.com/github/tmmity3-max/india-base-scanner/blob/main/India_Base_Scanner.ipynb" target="_blank" rel="noopener">Run your own scan in Colab</a>
       <a href="https://github.com/tmmity3-max/india-base-scanner" target="_blank" rel="noopener">GitHub</a>
@@ -143,12 +154,19 @@
             <button type="button" id="scaleLog" class="scale-btn" aria-pressed="false" title="Logarithmic price scale (L)">L</button>
             <span class="zoom-sep" aria-hidden="true"></span>
             <button type="button" id="basesBtn" class="scale-btn bases-btn" aria-pressed="true" title="Show bases as boxes with their breakouts on every screen">Bases</button>
+            <span class="zoom-sep" aria-hidden="true"></span>
+            <button type="button" id="alertHere" class="scale-btn icon-btn" title="Set a Telegram alert for this stock" aria-label="Set a Telegram alert for this stock"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 16V11a6 6 0 0 1 12 0v5l2 2H4z"/><path d="M10 20a2 2 0 0 0 4 0"/></svg></button>
+            <button type="button" id="maxBtn" class="scale-btn icon-btn" aria-pressed="false" title="Full-size chart (F)" aria-label="Full-size chart"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/></svg></button>
           </div>
+        </div>
+        <div class="draw-wrap">
+          <div class="draw-bar" id="drawBar"></div>
+          <p class="draw-status" aria-live="polite"></p>
         </div>
         <div class="readout" id="readout"></div>
         <canvas id="chart" tabindex="0" role="img" aria-label="Price chart. Scroll to zoom, drag to move, double-click to reset."></canvas>
         <div class="chart-resize" id="chartResize" role="separator" aria-orientation="horizontal" aria-label="Drag to change the chart height. Double-click to reset." tabindex="0" title="Drag to change the chart height · double-click to reset"></div>
-        <p class="hint">Scroll or pinch to zoom, drag to move. Drag or scroll the price scale to stretch it, and double-click it to auto-fit again. Double-click the chart to reset.</p>
+        <p class="hint">Scroll or pinch to zoom, drag to move. Drag or scroll the price scale to stretch it, and double-click it to auto-fit again. Double-click the chart to reset. Pick a drawing tool above the chart; Shift + drag measures, Delete removes the selected drawing, Ctrl+Z undoes.</p>
         <div class="legend">
           <span id="sma10Legend" hidden><i class="k-sma10"></i>SMA 10</span>
           <span id="ema50Legend" hidden><i class="k-ema50"></i>EMA 50</span>
@@ -236,7 +254,18 @@
     <p>Open source under the MIT licence. <a href="https://github.com/tmmity3-max/india-base-scanner/issues" target="_blank" rel="noopener">Report a problem or suggest a screen</a>.</p>
   </footer>
 
+  <aside class="drawer" id="alerts" aria-labelledby="alTitle" hidden>
+    <header class="drawer-head">
+      <h2 id="alTitle">Alerts</h2>
+      <button type="button" class="drawer-x" id="alClose" aria-label="Close alerts">✕</button>
+    </header>
+    <div class="drawer-body" id="alBody"></div>
+  </aside>
+  <div class="scrim" id="scrim" hidden></div>
+
   <script src="data-source.js"></script>
+  <script src="draw.js"></script>
+  <script src="alerts.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

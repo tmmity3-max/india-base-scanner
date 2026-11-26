@@ -23,6 +23,7 @@
     "Trend Template": "Every liquid stock in a Stage-2 uptrend with RS 70 or more. The pool the VCP screen draws from.",
   };
   const ORDER = ["VCP", "Blue Sky", "Murphy", "Base Breakout", "50 EMA Pullback", "Ichimoku", "Episodic Pivot", "ATR Entry", "IPO Base", "Trend Template"];
+  window.IBS_SCREEN_NAMES = ORDER;          // the alerts form lists these
 
   // Stages: each screen splits into a few groups. `of` names a row's stage,
   // `list` is the order the cards appear in, with a one-line note for each.
@@ -291,7 +292,11 @@
     // the chart can grow only while it still fits on the screen with the table beside it
     const maxH = () => { const pn = $("chartPanel");
       return Math.max(260, pn.clientHeight - (canvas.getBoundingClientRect().top - pn.getBoundingClientRect().top + pn.scrollTop) - 60); };
-    const setH = (h) => { canvas.style.height = h && wide() ? `${Math.round(Math.min(Math.max(h, 260), maxH()))}px` : ""; };
+    const setH = (h) => {
+      if ($("chartPanel").classList.contains("max")) { canvas.style.height = ""; return; }   // full-size: CSS fills the screen
+      canvas.style.height = h && wide() ? `${Math.round(Math.min(Math.max(h, 260), maxH()))}px` : "";
+    };
+    window.ibsRestoreChartHeight = () => setH(load("ibs-chart-h"));
     setW(load("ibs-chart-w")); setH(load("ibs-chart-h"));
 
     function drag(el, onMove, onEnd) {
@@ -330,10 +335,25 @@
     const v = state.data ? state.data.data_date : "";
     const p = fetch(`${DATA}charts/${encodeURIComponent(sym)}.json?v=${v}`)
       .then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); })
+      .catch(() => liveChart(sym))           // not on today's screens: load it live
       .then(withRS);
     chartCache.set(sym, p);
     p.catch(() => chartCache.delete(sym));
     return p;
+  }
+  // Any NSE stock, straight from Yahoo Finance through the site's /api/chart
+  // function (5 years of daily candles and the moving averages; no bases or
+  // fundamentals, since those come from the daily scan).
+  async function liveChart(sym) {
+    const r = await fetch(`/api/chart?symbol=${encodeURIComponent(sym)}`);
+    if (!r.ok) {
+      let msg = "";
+      try { msg = (await r.json()).error || ""; } catch (e) { /* not JSON */ }
+      throw new Error(msg || `No chart for ${sym}`);
+    }
+    const c = await r.json();
+    c.live = true;
+    return c;
   }
 
   // =====================================================================
@@ -411,6 +431,8 @@
       this.pointers = new Map();
       this.showSma10 = false;
       this.ich = null;                       // Ichimoku lines, when the chart is in Ichimoku style
+      this.drawLayer = null;                 // drawing tools (main chart only), see draw.js
+      this.geo = null;                       // scales of the last draw, used by the drawing tools
       this.bind();
       new ResizeObserver(() => this.draw()).observe(canvas);
     }
@@ -430,9 +452,10 @@
           this.bases.push({ ...b, i0: at.has(b.s) ? at.get(b.s) : 0, i1: e });
         }
       }
+      if (this.drawLayer) this.drawLayer.setData(c);
       this.auto = true; this.reset(); this.emit();
     }
-    clear() { this.c = null; this.draw(); }
+    clear() { this.c = null; this.geo = null; this.draw(); }
     emit() { if (this.onScale) this.onScale({ auto: this.auto, log: this.log }); }
 
     get n() { return this.c ? this.c.c.length : 0; }
@@ -574,6 +597,8 @@
       cv.addEventListener("pointerdown", (e) => {
         if (!this.c) return;
         cv.setPointerCapture(e.pointerId);
+        // drawing tools get the first say: a new drawing, or picking and moving one
+        if (this.drawLayer && this.pointers.size === 0 && this.drawLayer.down(e)) { this.drawing = e.pointerId; return; }
         this.pointers.set(e.pointerId, { x: e.offsetX, y: e.offsetY });
         if (this.inPriceAxis(e.offsetX, e.offsetY) && this.pointers.size === 1) {
           this.axisDrag = { y: e.offsetY, lo: this.yLo, hi: this.yHi };
@@ -586,6 +611,11 @@
       cv.addEventListener("pointermove", (e) => {
         if (!this.c) return;
         const x = e.offsetX, y = e.offsetY;
+        if (this.drawLayer && this.pointers.size === 0 && this.drawLayer.move(e, this.drawing === e.pointerId)) {
+          this.hover = x > this.plotW() ? -1 : this.xToIndex(x); this.hoverY = y;
+          this.draw();
+          return;
+        }
         if (this.pointers.has(e.pointerId)) this.pointers.set(e.pointerId, { x, y });
         cv.classList.toggle("on-axis", this.inPriceAxis(x, y));
 
@@ -620,6 +650,7 @@
         this.draw();
       });
       const up = (e) => {
+        if (this.drawing === e.pointerId) { this.drawing = null; this.drawLayer.up(e); return; }
         this.pointers.delete(e.pointerId);
         if (this.pointers.size < 2) this.pinch = null;
         if (this.pointers.size === 0) { this.drag = null; this.axisDrag = null; cv.classList.remove("grabbing"); }
@@ -628,6 +659,7 @@
       cv.addEventListener("pointercancel", up);
       cv.addEventListener("pointerleave", (e) => { if (e.pointerType === "mouse") { this.hover = -1; this.hoverY = -1; this.draw(); } });
       cv.addEventListener("dblclick", (e) => {
+        if (this.drawLayer && this.drawLayer.dblclick(e)) return;      // finish a path, edit a text
         if (this.inPriceAxis(e.offsetX, e.offsetY)) this.setAuto(true);  // like TradingView: double-click the scale to reset it
         else this.reset();
       });
@@ -903,6 +935,12 @@
         tag(lastY, fmtAxis(lastC), col, "#fff");
       }
 
+      // drawings (main chart: editable layer; small charts: saved drawings, shown only)
+      this.geo = { X, Y, priceAt, plotW, priceH, step, start: this.start, axisW: this.axisW(), mini };
+      if (this.drawLayer) this.drawLayer.render(ctx, this.geo);
+      else if (window.IBSDraw) window.IBSDraw.renderSaved(ctx, this.geo, c);
+      ctx.font = `${mini ? 10 : 11}px ${css("--body")}`; ctx.textBaseline = "middle";
+
       // crosshair with price label
       const hv = this.hover >= i0 && this.hover <= i1 ? this.hover : -1;
       if (hv >= 0) {
@@ -966,6 +1004,147 @@
       $("scaleLog").setAttribute("aria-pressed", log ? "true" : "false");
     },
   });
+  if (window.IBSDraw) {
+    mainChart.drawLayer = new window.IBSDraw.Layer(mainChart, $("drawBar"));
+    mainChart.drawLayer.onAlertLine = (sym, price) => openAlertForm(sym, price);
+  }
+  function openAlertForm(sym, price) {
+    if (!window.ibsAlerts) return;
+    const c = mainChart.c;
+    window.ibsAlerts.open({ symbol: sym, price: price != null ? price : c ? c.c[c.c.length - 1] : null, last: c ? c.c[c.c.length - 1] : null });
+  }
+
+  // ---------- full-size chart ----------
+  function setMax(on) {
+    const panel = $("chartPanel");
+    if (on === panel.classList.contains("max")) return;
+    panel.classList.toggle("max", on);
+    document.body.classList.toggle("chart-max", on);
+    $("maxBtn").setAttribute("aria-pressed", on ? "true" : "false");
+    $("maxBtn").title = on ? "Exit full size (F or Esc)" : "Full-size chart (F)";
+    if (on) { panel.classList.add("open"); $("chart").style.height = ""; }
+    else if (window.ibsRestoreChartHeight) window.ibsRestoreChartHeight();
+    requestAnimationFrame(() => { mainChart.draw(); syncHeights(); });
+    if (on) $("chart").focus({ preventScroll: true });
+  }
+  $("maxBtn").addEventListener("click", () => setMax(!$("chartPanel").classList.contains("max")));
+  $("alertHere").addEventListener("click", () => { if (state.symbol) openAlertForm(state.symbol, null); });
+  document.addEventListener("keydown", (e) => {
+    const tg = e.target;
+    const typing = tg && (tg.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(tg.tagName));
+    if (e.key === "Escape" && $("chartPanel").classList.contains("max")) { setMax(false); e.stopImmediatePropagation(); return; }
+    if (typing || e.ctrlKey || e.metaKey || e.altKey) return;
+    if ((e.key === "f" || e.key === "F") && state.symbol && state.view === "table" && mainChart.c) { e.preventDefault(); setMax(!$("chartPanel").classList.contains("max")); }
+    if (e.key === "/" && $("gsInput")) { e.preventDefault(); $("gsInput").focus(); }
+  });
+
+  // ---------- search any NSE stock ----------
+  // The list of symbols comes from the scan (symbols.json); before the first
+  // scan that writes it, from the universe file the scan keeps.
+  let SYMBOLS = null;
+  function loadSymbols() {
+    if (SYMBOLS) return SYMBOLS;
+    SYMBOLS = (async () => {
+      const base = await window.ibsDataBase();
+      const seen = new Map();
+      const add = (s, n, i) => { s = String(s || "").trim().toUpperCase(); if (s && !seen.has(s)) seen.set(s, { s, n: n || "", i: i || "" }); };
+      try {
+        const r = await fetch(`${base}symbols.json`);
+        if (r.ok) for (const [s, n, i] of await r.json()) add(s, n, i);
+      } catch (e) { /* not published yet */ }
+      if (!seen.size) {
+        try {
+          const r = await fetch(`${base}universe_all_eq.csv`);
+          if (r.ok) {
+            const lines = (await r.text()).split(/\r?\n/), head = lines.shift().split(",").map((h) => h.trim().toLowerCase());
+            const si = head.indexOf("symbol"), ii = head.indexOf("industry");
+            for (const ln of lines) { const p = ln.split(","); if (p[si]) add(p[si], "", ii >= 0 ? p.slice(ii).join(",").replace(/^"|"$/g, "") : ""); }
+          }
+        } catch (e) { /* offline */ }
+      }
+      if (state.data) for (const rows of Object.values(state.data.screens)) for (const r of rows) add(r.symbol, "", r.industry);
+      return [...seen.values()];
+    })();
+    return SYMBOLS;
+  }
+  window.ibsSymbols = loadSymbols;
+  function screensOf(sym) {
+    if (!state.data) return [];
+    return ORDER.filter((n) => (state.data.screens[n] || []).some((r) => r.symbol === sym));
+  }
+  (function globalSearch() {
+    const inp = $("gsInput"), list = $("gsList");
+    if (!inp) return;
+    let items = [], active = -1;
+    const close = () => { list.hidden = true; inp.setAttribute("aria-expanded", "false"); active = -1; inp.removeAttribute("aria-activedescendant"); };
+    const choose = (sym) => { close(); inp.value = ""; inp.blur(); openAny(sym); };
+    async function update() {
+      const q = inp.value.trim().toUpperCase();
+      if (!q) { close(); return; }
+      const all = await loadSymbols();
+      if (inp.value.trim().toUpperCase() !== q) return;          // typed on meanwhile
+      const score = (x) => {
+        if (x.s === q) return 0;
+        if (x.s.startsWith(q)) return 1;
+        const name = x.n.toUpperCase();
+        if (name.startsWith(q)) return 2;
+        if (name.split(/\s+/).some((w) => w.startsWith(q))) return 3;
+        if (x.s.includes(q)) return 4;
+        if (name.includes(q) || x.i.toUpperCase().includes(q)) return 5;
+        return 9;
+      };
+      items = all.map((x) => [score(x), x]).filter(([s]) => s < 9).sort((a, b) => a[0] - b[0] || a[1].s.localeCompare(b[1].s)).slice(0, 12).map(([, x]) => x);
+      if (!items.some((x) => x.s === q) && /^[A-Z0-9&_.-]{1,24}$/.test(q)) items.push({ s: q, n: "Open this symbol", i: "", raw: true });
+      list.innerHTML = "";
+      items.forEach((x, k) => {
+        const li = document.createElement("li");
+        li.id = `gs-${k}`; li.setAttribute("role", "option");
+        const on = x.raw ? [] : screensOf(x.s);
+        li.innerHTML = `<b></b><span class="gs-name"></span>${on.length ? `<span class="gs-on"></span>` : ""}`;
+        li.querySelector("b").textContent = x.s;
+        li.querySelector(".gs-name").textContent = x.n || x.i;
+        if (on.length) li.querySelector(".gs-on").textContent = on.join(" · ");
+        li.addEventListener("pointerdown", (e) => { e.preventDefault(); choose(x.s); });
+        list.appendChild(li);
+      });
+      list.hidden = !items.length; inp.setAttribute("aria-expanded", items.length ? "true" : "false");
+      setActive(items.length ? 0 : -1);
+    }
+    function setActive(k) {
+      active = k;
+      [...list.children].forEach((li, j) => li.setAttribute("aria-selected", j === k ? "true" : "false"));
+      if (k >= 0) { inp.setAttribute("aria-activedescendant", `gs-${k}`); list.children[k].scrollIntoView({ block: "nearest" }); }
+    }
+    inp.addEventListener("focus", () => { loadSymbols(); if (inp.value.trim()) update(); });
+    inp.addEventListener("input", update);
+    inp.addEventListener("blur", () => setTimeout(close, 120));
+    inp.addEventListener("keydown", (e) => {
+      if (e.key === "ArrowDown" && items.length) { e.preventDefault(); setActive((active + 1) % items.length); }
+      else if (e.key === "ArrowUp" && items.length) { e.preventDefault(); setActive((active - 1 + items.length) % items.length); }
+      else if (e.key === "Enter") {
+        e.preventDefault();
+        const x = items[active] || items[0];
+        if (x) choose(x.s);
+        else if (inp.value.trim()) choose(inp.value.trim().toUpperCase());
+      } else if (e.key === "Escape") { close(); inp.blur(); }
+    });
+  })();
+  // open a stock from the search box (or an alert): its chart in the panel, on
+  // a screen it is listed on when the current one doesn't have it
+  function openAny(sym) {
+    if (!state.data) return;
+    if (state.view !== "table") setView("table");
+    const on = screensOf(sym);
+    if (on.length && !on.includes(state.screen)) selectScreen(on[0]);
+    const def = STAGES[state.screen];
+    const row = (state.data.screens[state.screen] || []).find((r) => r.symbol === sym);
+    if (row && def && def.of(row) !== state.stage) selectStage(def.of(row));
+    openStock(sym, true);
+    const panel = $("chartPanel");
+    if (window.matchMedia("(min-width: 1081px)").matches) window.scrollTo({ top: Math.max(0, $("tools").offsetTop - 12), behavior: "smooth" });
+    panel.classList.add("open");
+  }
+  window.ibsOpenStock = openAny;
 
   async function init() {
     readHash();
@@ -993,7 +1172,7 @@
     selectScreen(state.screen, true);
 
     $("search").addEventListener("input", (e) => { state.query = e.target.value.trim().toLowerCase(); refreshList(); });
-    $("closeChart").addEventListener("click", () => $("chartPanel").classList.remove("open"));
+    $("closeChart").addEventListener("click", () => { setMax(false); $("chartPanel").classList.remove("open"); });
     updateFilterBtn();
     $("filterBtn").addEventListener("click", () => showFilters($("filters").hidden));
     $("filterApply").addEventListener("click", applyFilters);
@@ -1383,15 +1562,20 @@
     try { c = await loadChart(sym); }
     catch (e) {
       if (state.symbol !== sym) return;
-      $("chartSub").textContent = "Chart data is missing for this stock. It will appear after the next scan.";
+      $("chartSub").textContent = `Couldn't load a chart for ${sym}. ${e && e.message && !/^\d+$/.test(e.message) ? e.message + ". " : ""}Check the NSE symbol and try again.`;
+      $("chartMcap").innerHTML = ""; $("fund").hidden = true;
       mainChart.clear();
       return;
     }
     if (state.symbol !== sym) return;
-    const row = (state.data.screens[state.screen] || []).find((r) => r.symbol === sym) || {};
+    const row = (state.data.screens[state.screen] || []).find((r) => r.symbol === sym)
+      || Object.values(state.data.screens).flat().find((r) => r.symbol === sym) || {};
     const bits = [];
     if (row.industry) bits.push(row.industry);
+    else if (c.live) { const s = (await loadSymbols()).find((x) => x.s === sym); if (s && (s.n || s.i)) bits.push(s.n || s.i); }
+    if (state.symbol !== sym) return;
     if (c.screens && c.screens.length) bits.push("In: " + c.screens.join(", "));
+    if (c.live) bits.push("Not on today's screens, loaded live from Yahoo Finance (no bases or fundamentals)");
     $("chartSub").innerHTML = "";
     $("chartSub").append(bits.join(". ") + (bits.length ? ". " : ""), tvLink(sym));
     $("rsLegend").hidden = !(c.rsv || c.rs);

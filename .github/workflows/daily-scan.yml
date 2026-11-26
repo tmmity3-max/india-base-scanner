@@ -40,7 +40,9 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Run tests
-        run: python tests/test_screens.py
+        run: |
+          python tests/test_screens.py
+          python tests/test_alerts.py
 
       - name: Restore cached universe from the data branch
         run: |
@@ -64,3 +66,14 @@ jobs:
           git add -A
           git commit -q -m "Scan $(date -u +%Y-%m-%d)"
           git push -q --force "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" data
+
+      # Telegram: stocks that showed up on a screen you set an alert for, and the
+      # daily lists of new stocks per screen. Never fails the scan.
+      - name: Screen alerts
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          SITE_URL: ${{ vars.SITE_URL }}
+        run: python scripts/check_alerts.py --mode scan --latest out/latest.json --prev /tmp/prev/latest.json

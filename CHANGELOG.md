@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Website: **full-size chart** button (or F), Esc to go back.
+- Website: **drawing tools** on the chart (trend line, ray, extended line, horizontal line and ray, vertical line, arrow, arrow marks, rectangle, ellipse, parallel channel, Fibonacci retracement, path, brush, text, and a ruler for price, % and time; Shift + drag measures any time), with colours, line width, magnet, undo, and drawings kept per stock in the browser. Saved drawings also show on the charts-only grid.
+- Website: **search any NSE stock** from the header (press `/`); stocks off today's screens load live from Yahoo Finance through the new `/api/chart` function. The daily scan writes `symbols.json` for the search list.
+- **Telegram alerts**: an Alerts panel on the site (price goes above / below, appears on a screen, daily list of new stocks on a screen), saved through the new `/api/alerts` function to `alerts.json` on the `alerts` branch. `scripts/check_alerts.py` sends the messages: price alerts every 15 minutes in market hours (`.github/workflows/alerts.yml`), screen alerts after the daily scan. Active price alerts show as orange lines on the chart.
+
 - New **ATR Entry** screen: the first close 2 ATR above the 70-day SMA with +DI > −DI, the RS line above its 50-day average and no more than 7 ATR above the 50-day SMA, in the last 5 sessions (the green circle of the RS Line + Buy Signals indicator). On the website, in the notebook and in the Excel export.
 - Website: every filter now sits in one box behind a gear Filters button, with quick buttons for market cap and for daily turnover (₹1, 5, 10 or 50 crore+). Each screen keeps its own filters, and changes take effect only when you press Apply (Cancel discards them).
 - Website: the table shows as many rows as fit on the screen, with Prev / Next pages, so the sideways scrollbar is always in view; the Stock column stays fixed when scrolling sideways. The chart's width and height handles stop where the table and chart still fit side by side on the screen.

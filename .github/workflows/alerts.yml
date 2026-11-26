@@ -1,0 +1,40 @@
+name: Price alerts
+
+# Checks the website's price alerts and sends Telegram messages.
+# Every 15 minutes, Monday to Friday, 03:00-10:59 UTC = 08:30-16:29 IST, which
+# covers the NSE session (09:15-15:30 IST). GitHub may start a run a few
+# minutes late; the check looks at every 5-minute candle since the alert was
+# set, so a late run still catches the move.
+#
+# Needs the repository secrets TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID.
+# Screen alerts are checked by the daily scan workflow instead.
+on:
+  schedule:
+    - cron: "*/15 3-10 * * 1-5"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: alerts
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: scripts
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Check price alerts
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          SITE_URL: ${{ vars.SITE_URL }}
+        run: python scripts/check_alerts.py --mode price

@@ -47,10 +47,30 @@ A free website, **[india-base-scanner-web.vercel.app](https://india-base-scanner
 
 - `scripts/daily_scan.py` scans every NSE stock, keeps those with ₹1 crore+ daily turnover, and writes JSON.
 - `.github/workflows/daily-scan.yml` runs it at 16:53 IST, Monday to Friday, and force-pushes the JSON to the `data` branch, so `main` doesn't grow every day.
-- Vercel serves the static site in `web/`, which reads the data from `raw.githubusercontent.com`. No server, no database.
+- Vercel serves the static site in `web/`, which reads the data from `raw.githubusercontent.com`. Two small Vercel functions in `web/api/` load live charts and save alerts; there is no database.
 - Charts zoom and pan like TradingView (scroll, drag, pinch, 3M/6M/1Y/2Y), and a *Charts only* view shows every match as a grid.
+- **Full-size chart**: the ⛶ button (or the F key) fills the screen with the chart; Esc goes back.
+- **Drawing tools** above the chart: trend line, ray, extended line, horizontal line and ray, vertical line, arrow, arrow marks, rectangle, ellipse, parallel channel, Fibonacci retracement, path, brush, text and a ruler that measures the price change, % change, bars and days (or hold Shift and drag). Choose a colour and line width, snap to open/high/low/close with the magnet, select a drawing to move or delete it, and Ctrl+Z to undo. Drawings are kept in your browser, one set per stock, and stay on the same candles as new days come in.
+- **Search any NSE stock** from the box at the top (press `/`). Stocks on today's screens open on their screen; any other stock loads live from Yahoo Finance through `/api/chart`, with the moving averages and RS line but without bases or fundamentals.
+- **Alerts**: a Telegram message when a stock goes above or below a price, appears on a screen, or a daily list of new stocks on a screen. See [Telegram alerts](#telegram-alerts).
 
 To host your own copy, import this repo on [Vercel](https://vercel.com/new), set **Root Directory** to `web` and **Framework Preset** to *Other*, then click Deploy.
+
+### Telegram alerts
+
+Open **Alerts** at the top of the site, or select a horizontal line on a chart and press the bell. The alerts are saved in `alerts.json` on the repo's `alerts` branch (made the first time you add one). Note that the repository is public, so anyone can read that file; the key only stops others from changing it.
+
+- **Price alerts** (goes above / goes below) are checked every 15 minutes while NSE is open by `.github/workflows/alerts.yml`, using Yahoo Finance's 5-minute candles since the alert was set, so a move between two checks is not missed. Each alert fires once; press *Re-arm* on the site to watch for it again. GitHub can start scheduled runs a few minutes late.
+- **Screen alerts** (a stock appears on a screen, or a daily list of new stocks on a screen) are checked by the daily scan right after it publishes.
+
+One-time setup:
+
+1. In Telegram, talk to **@BotFather**, send `/newbot` and copy the bot token. Send your new bot any message, then open `https://api.telegram.org/bot<token>/getUpdates` and copy the `chat.id`.
+2. In GitHub, **Settings → Secrets and variables → Actions**, add the secrets `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID`.
+3. Create a [fine-grained GitHub token](https://github.com/settings/personal-access-tokens/new) for this repository only, with **Contents: Read and write**. In Vercel, **Settings → Environment Variables**, add `GITHUB_TOKEN` (that token), `ALERTS_KEY` (a long password you choose; the site asks for it), and, for the site's *Send a test message* button, `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID`. Redeploy.
+4. Open **Alerts** on the site, enter your `ALERTS_KEY`, and press *Send a test message*.
+
+Try a check by hand from **Actions → Price alerts → Run workflow**. A local dry run prints the messages instead of sending them: `GITHUB_TOKEN=... python scripts/check_alerts.py --mode price --dry-run`.
 
 ## Free TradingView indicator
 

@@ -238,6 +238,19 @@ def write_heatmap(data: dict, fund: dict, out_dir: str, members: dict) -> dict:
     return out
 
 
+def write_symbols(uni: pd.DataFrame, data: dict, fund: dict, out_dir: str) -> int:
+    """Every stock the scan downloaded, for the website's search box:
+    [[symbol, company name, industry], ...]. Stocks with no candles are left out."""
+    rows = []
+    ind = dict(zip(uni["symbol"], uni["industry"].fillna(""))) if "industry" in uni else {}
+    for sym in sorted(data):
+        f = fund.get(sym, {})
+        rows.append([sym, f.get("name") or "", ind.get(sym) or f.get("yf_industry") or ""])
+    with open(os.path.join(out_dir, "symbols.json"), "w") as fh:
+        json.dump(rows, fh, separators=(",", ":"), ensure_ascii=False)
+    return len(rows)
+
+
 def load_universe(name: str, cache_path: str) -> pd.DataFrame:
     """Download the symbol list; fall back to the last good copy if NSE blocks us."""
     with __import__("warnings").catch_warnings(record=True) as w:
@@ -398,6 +411,7 @@ def main():
     latest = write_site_data(result, data, args.out, args.universe, args.benchmark, fund)
     write_heatmap(data, fund, args.out, members)
     write_benchmarks(args.out)
+    print(f"Search list: {write_symbols(uni, data, fund, args.out)} symbols")
     print(f"Scan for {latest['data_date']}:")
     print(result.summary().to_string(index=False))
 
