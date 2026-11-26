@@ -585,12 +585,13 @@
       bar.innerHTML = "";
       bar.setAttribute("role", "toolbar"); bar.setAttribute("aria-label", "Drawing tools");
       const icon = (paths, fill) => `<svg viewBox="0 0 24 24" aria-hidden="true" class="${fill ? "fill" : ""}">${paths}</svg>`;
+      let into = bar;                     // where the next buttons go
       const mk = (cls, title, html, onClick) => {
         const b = document.createElement("button");
         b.type = "button"; b.className = cls; b.title = title; b.setAttribute("aria-label", title); b.innerHTML = html;
-        b.addEventListener("click", onClick); bar.appendChild(b); return b;
+        b.addEventListener("click", onClick); into.appendChild(b); return b;
       };
-      const sep = () => { const s = document.createElement("span"); s.className = "draw-sep"; s.setAttribute("aria-hidden", "true"); bar.appendChild(s); };
+      const sep = () => { const s = document.createElement("span"); s.className = "draw-sep"; s.setAttribute("aria-hidden", "true"); into.appendChild(s); };
       this.toolBtns = {};
       for (const [id, title, key, , paths] of TOOLS) {
         const filled = id === "arrowUp" || id === "arrowDown" || id === "cursor";
@@ -598,7 +599,17 @@
         if (id === "cursor" || id === "vline" || id === "arrowDown" || id === "fib") sep();
       }
       sep();
-      // colour swatches
+      // switches that apply to all drawings
+      this.magnetBtn = mk("draw-btn", "Magnet: snap points to open, high, low or close", icon('<path d="M6 3v8a6 6 0 0 0 12 0V3h-4v8a2 2 0 0 1-4 0V3z"/><path d="M6 7h4M14 7h4"/>'), () => { this.magnet = !this.magnet; this.prefs(); this.syncBar(); });
+      this.keepBtn = mk("draw-btn", "Keep drawing: stay on the tool after each drawing", icon('<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>'), () => { this.keep = !this.keep; this.prefs(); this.syncBar(); });
+      this.hideBtn = mk("draw-btn", "Hide drawings", icon('<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>'), () => { this.hidden = !this.hidden; this.sel = null; this.prefs(); this.syncBar(); this.redraw(); });
+      this.undoBtn = mk("draw-btn", "Undo (Ctrl+Z)", icon('<path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/>'), () => this.undoLast());
+      this.clearBtn = mk("draw-btn draw-clear", "Remove all drawings on this stock", icon('<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11l4 5M14 11l-4 5"/>'), () => this.clearAll());
+      // edit box: shown only while a drawing is selected or being drawn, like TradingView
+      this.editBox = document.createElement("span");
+      this.editBox.className = "draw-edit"; this.editBox.setAttribute("role", "group"); this.editBox.setAttribute("aria-label", "Edit drawing");
+      bar.appendChild(this.editBox);
+      into = this.editBox;
       const sw = document.createElement("span"); sw.className = "draw-colors"; sw.setAttribute("role", "group"); sw.setAttribute("aria-label", "Colour");
       this.swatches = COLORS.map(([c, name]) => {
         const b = document.createElement("button");
@@ -611,24 +622,17 @@
         });
         sw.appendChild(b); return [c, b];
       });
-      bar.appendChild(sw);
+      this.editBox.appendChild(sw);
       this.widthBtn = mk("draw-btn draw-width", "Line width", "", () => {
         this.width = this.width >= 4 ? 1 : this.width + 1; this.prefs();
         if (this.sel) { this.snapshot(); this.sel.width = this.width; this.persist(); }
         this.syncBar(); this.redraw();
       });
-      sep();
-      this.magnetBtn = mk("draw-btn", "Magnet: snap points to open, high, low or close", icon('<path d="M6 3v8a6 6 0 0 0 12 0V3h-4v8a2 2 0 0 1-4 0V3z"/><path d="M6 7h4M14 7h4"/>'), () => { this.magnet = !this.magnet; this.prefs(); this.syncBar(); });
-      this.keepBtn = mk("draw-btn", "Keep drawing: stay on the tool after each drawing", icon('<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>'), () => { this.keep = !this.keep; this.prefs(); this.syncBar(); });
-      this.hideBtn = mk("draw-btn", "Hide drawings", icon('<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>'), () => { this.hidden = !this.hidden; this.sel = null; this.prefs(); this.syncBar(); this.redraw(); });
-      sep();
       this.alertBtn = mk("draw-btn draw-alert", "Set a Telegram alert at the selected horizontal line", icon('<path d="M6 16V11a6 6 0 0 1 12 0v5l2 2H4z"/><path d="M10 20a2 2 0 0 0 4 0"/>'), () => {
         const it = this.sel;
         if (it && (it.type === "hline" || it.type === "hray") && this.onAlertLine) this.onAlertLine(this.sym, it.pts[0].p);
       });
-      this.undoBtn = mk("draw-btn", "Undo (Ctrl+Z)", icon('<path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/>'), () => this.undoLast());
       this.delBtn = mk("draw-btn", "Delete the selected drawing (Delete)", icon('<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/>'), () => this.deleteSel());
-      this.clearBtn = mk("draw-btn draw-clear", "Remove all drawings on this stock", icon('<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11l4 5M14 11l-4 5"/>'), () => this.clearAll());
       this.syncBar();
     }
     syncBar() {
@@ -644,7 +648,9 @@
       this.hideBtn.setAttribute("aria-pressed", this.hidden ? "true" : "false");
       this.hideBtn.title = this.hidden ? "Show drawings" : "Hide drawings";
       const canAlert = !!(this.sel && (this.sel.type === "hline" || this.sel.type === "hray") && this.onAlertLine);
-      this.alertBtn.disabled = !canAlert;
+      this.alertBtn.hidden = !canAlert;
+      this.delBtn.hidden = !this.sel;
+      this.editBox.hidden = !(this.sel || this.tool !== "cursor");
       this.delBtn.disabled = !this.sel;
       this.undoBtn.disabled = !this.undo.length;
       this.clearBtn.disabled = !this.items.length;

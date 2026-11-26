@@ -1024,7 +1024,7 @@
     $("maxBtn").title = on ? "Exit full size (F or Esc)" : "Full-size chart (F)";
     if (on) { panel.classList.add("open"); $("chart").style.height = ""; }
     else if (window.ibsRestoreChartHeight) window.ibsRestoreChartHeight();
-    requestAnimationFrame(() => { mainChart.draw(); syncHeights(); });
+    requestAnimationFrame(() => { mainChart.draw(); syncHeights(); placeFundOv(); });
     if (on) $("chart").focus({ preventScroll: true });
     // opened from a card in the charts-only view: go back to the grid where it was
     if (!on && gridReturn) {
@@ -1578,7 +1578,7 @@
     catch (e) {
       if (state.symbol !== sym) return;
       $("chartSub").textContent = `Couldn't load a chart for ${sym}. ${e && e.message && !/^\d+$/.test(e.message) ? e.message + ". " : ""}Check the NSE symbol and try again.`;
-      $("chartMcap").innerHTML = ""; $("fund").hidden = true;
+      $("chartMcap").innerHTML = ""; $("fund").hidden = true; $("fundOv").hidden = true;
       mainChart.clear();
       return;
     }
@@ -1602,6 +1602,7 @@
     const mc = (c.fund && c.fund.market_cap_cr) || row.market_cap_cr;
     $("chartMcap").innerHTML = mc != null ? `<span>Market cap</span><b>${mcapText(mc)}</b>` : "";
     renderFund(c, row);
+    renderFundOv(c, row);
     const murphy = state.screen === "Murphy";
     const ich = state.screen === "Ichimoku";
     const info = ich && c.ich ? c.ich : null;
@@ -1668,7 +1669,73 @@
       `<p class="fund-src">${sector ? sector + ". " : ""}Source: Yahoo Finance, may be out of date. Check the company's filings before relying on it.</p>`;
   }
 
+  // ---------- fundamentals table over the chart (top left of the price pane) ----------
+  // sector and industry, market cap, P/E, ROE, free float, the last five quarters
+  // (EPS and sales with their change on a year earlier, net profit, operating
+  // margin), then price facts worked out from the candles.
+  let fundOvOpen = true;
+  try { fundOvOpen = localStorage.getItem("ibs-fundov") !== "0"; } catch (e) { /* private window */ }
+  function renderFundOv(c, row) {
+    const box = $("fundOv"), f = c.fund || {};
+    const n = c.c.length, last = n - 1;
+    const cls = (v) => (v == null ? "na" : v >= 0 ? "pos" : "neg");
+    const pc = (v) => (v == null ? "–" : `${nf0.format(Math.round(v))}%`);
+    const num = (v, d = 1) => (v == null ? "–" : new Intl.NumberFormat("en-IN", { maximumFractionDigits: d, minimumFractionDigits: d }).format(v));
+    const mcap = (cr) => (cr == null ? "–" : cr >= 1000 ? `${num(cr / 1000, 1)}K cr` : `${nf0.format(cr)} cr`);
+    // price facts from the candles
+    const tail = (k) => Math.max(0, n - k);
+    const hi52 = c.hi52 != null ? c.hi52 : Math.max(...c.h.slice(tail(252)));
+    const lo52 = c.lo52 != null ? c.lo52 : Math.min(...c.l.slice(tail(252)));
+    const close = c.c[last];
+    const offHi = hi52 ? (close / hi52 - 1) * 100 : null, upLo = lo52 ? (close / lo52 - 1) * 100 : null;
+    const avg = (arr) => (arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null);
+    const tov = (i) => (c.c[i] * c.v[i]) / 1e7;
+    const tov1 = tov(last), tov50 = avg(c.c.slice(tail(50)).map((_, k) => tov(tail(50) + k)));
+    const adr = avg(c.h.slice(tail(20)).map((h, k) => (h / c.l[tail(20) + k] - 1) * 100));
+    const v50 = avg(c.v.slice(tail(51), last)), rvol = v50 ? c.v[last] / v50 : null;
+    const sector = [f.sector, f.yf_industry || row.industry].filter(Boolean).join(" ↔ ");
+    let rows = (f.qtr && f.qtr.rows) || [];
+    if (!rows.length && f.qtr && f.qtr.q) rows = [{ q: f.qtr.q, sales_cr: f.qtr.sales_cr, sales_yoy: f.qtr.sales_yoy, pat_cr: f.qtr.pat_cr, opm: f.qtr.opm }];
+    const head = `<div class="fo-head"><button type="button" class="fo-toggle" aria-expanded="${fundOvOpen}" title="${fundOvOpen ? "Hide" : "Show"} the fundamentals table">${fundOvOpen ? "▾" : "▸"}</button><span>${sector || f.name || "Fundamentals"}</span></div>`;
+    let body = "";
+    if (fundOvOpen) {
+      const top = (f.market_cap_cr || row.market_cap_cr || f.pe != null || f.roe != null || f.float_pct != null)
+        ? `<tr class="fo-kv"><th>MCap</th><td>${mcap(f.market_cap_cr || row.market_cap_cr)}</td><th>P/E</th><td>${f.pe != null ? nf0.format(f.pe) : "–"}</td>` +
+          `<th>ROE</th><td>${f.roe != null ? pc(f.roe) : "–"}</td><th>FFloat%</th><td>${f.float_pct != null ? nf0.format(f.float_pct) : "–"}</td></tr>` : "";
+      const qt = rows.length
+        ? `<tr class="fo-cols"><th>Qtr</th><th>EPS</th><th>YoY%</th><th>Sales</th><th>YoY%</th><th>PAT</th><th>OPM</th><th></th></tr>` +
+          rows.map((r) => `<tr><td>${r.q}</td><td>${r.eps != null ? num(r.eps, Math.abs(r.eps) >= 100 ? 0 : 1) : "–"}</td><td class="${cls(r.eps_yoy)}">${pc(r.eps_yoy)}</td>` +
+            `<td>${r.sales_cr != null ? num(r.sales_cr, r.sales_cr >= 1000 ? 0 : 1) : "–"}</td><td class="${cls(r.sales_yoy)}">${pc(r.sales_yoy)}</td>` +
+            `<td>${r.pat_cr != null ? num(r.pat_cr, Math.abs(r.pat_cr) >= 1000 ? 0 : 1) : "–"}</td><td>${r.opm != null ? pc(r.opm) : "–"}</td><td></td></tr>`).join("")
+        : "";
+      const px = `<tr class="fo-px"><th>${offHi != null && offHi < 0 ? "▼" : "▲"} 52W high</th><td class="${cls(offHi)}">${offHi != null ? num(offHi, 1) + "%" : "–"}</td>` +
+          `<th colspan="2">TOver ₹ cr · 1D</th><td colspan="2">${tov1 != null ? num(tov1, 1) : "–"}</td><td colspan="2"></td></tr>` +
+        `<tr class="fo-px"><th>▲ 52W low</th><td class="${cls(upLo)}">${upLo != null ? num(upLo, 1) + "%" : "–"}</td>` +
+          `<th colspan="2">Avg TOver · 50</th><td colspan="2">${tov50 != null ? num(tov50, 1) : "–"}</td><td colspan="2"></td></tr>` +
+        `<tr class="fo-px"><th>ADR · 20</th><td>${adr != null ? num(adr, 2) + "%" : "–"}</td>` +
+          `<th colspan="2">RVol × · 50</th><td colspan="2" class="${rvol != null && rvol >= 1.5 ? "pos" : ""}">${rvol != null ? num(rvol, 2) : "–"}</td><td colspan="2"></td></tr>`;
+      body = `<table>${top}${qt}${px}</table>` + (c.live ? `<p class="fo-note">Live chart: no quarterly figures</p>` : "");
+    }
+    box.innerHTML = head + body;
+    box.hidden = false;
+    box.querySelector(".fo-toggle").addEventListener("click", () => {
+      fundOvOpen = !fundOvOpen;
+      try { localStorage.setItem("ibs-fundov", fundOvOpen ? "1" : "0"); } catch (e) { /* ignore */ }
+      renderFundOv(c, row);
+    });
+    placeFundOv();
+  }
+  function placeFundOv() {
+    const box = $("fundOv"), cv = $("chart");
+    if (box.hidden) return;
+    box.style.left = `${cv.offsetLeft + 6}px`;
+    box.style.top = `${cv.offsetTop + 6}px`;
+    box.style.maxWidth = `${Math.max(200, cv.clientWidth - mainChart.axisW() - 16)}px`;
+  }
+  { const ro = new ResizeObserver(placeFundOv); ro.observe($("chart")); ro.observe($("drawBar")); ro.observe($("chartPanel")); }
+
   function clearChart() {
+    $("fundOv").hidden = true;
     $("chartMcap").innerHTML = ""; $("fund").hidden = true;
     state.symbol = null;
     $("chartTitle").textContent = "Pick a stock";

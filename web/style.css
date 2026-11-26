@@ -636,19 +636,24 @@ canvas.mini { width: 100%; height: 340px; display: block; touch-action: pan-y; c
 /* ---------- Drawing tools ---------- */
 .draw-wrap { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 12px; margin: 6px 0 0; }
 .draw-bar { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 1px; padding: 2px; border: 1px solid var(--grid); border-radius: var(--radius); background: var(--surface); }
-.draw-btn { appearance: none; border: 0; background: none; color: var(--ink-2); width: 30px; height: 28px; padding: 0; border-radius: var(--radius);
+.draw-btn { appearance: none; border: 0; background: none; color: var(--ink-2); width: 36px; height: 34px; padding: 0; border-radius: var(--radius);
   display: inline-flex; align-items: center; justify-content: center; cursor: pointer;
   transition: background var(--dur-micro) var(--ease-out), color var(--dur-micro) var(--ease-out); }
-.draw-btn svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.draw-btn svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
 .draw-btn svg.fill { fill: currentColor; stroke-width: 1; }
 .draw-btn:hover:not(:disabled) { background: var(--row-hover); color: var(--ink); }
 .draw-btn[aria-pressed="true"] { background: var(--saffron-wash); color: var(--saffron-ink); box-shadow: inset 0 0 0 1px var(--saffron); }
 .draw-btn:disabled { opacity: 0.35; cursor: default; }
-.draw-sep { width: 1px; height: 18px; background: var(--grid); margin: 0 3px; }
+.draw-sep { width: 1px; height: 22px; background: var(--grid); margin: 0 3px; }
 .draw-colors { display: inline-flex; align-items: center; gap: 3px; padding: 0 4px; }
-.draw-sw { appearance: none; width: 16px; height: 16px; padding: 0; border-radius: 50%; background: var(--sw); border: 1px solid var(--rule-2); cursor: pointer; }
+.draw-sw { appearance: none; width: 18px; height: 18px; padding: 0; border-radius: 50%; background: var(--sw); border: 1px solid var(--rule-2); cursor: pointer; }
 .draw-sw[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--surface), 0 0 0 3.5px var(--ink); }
-.draw-w { display: block; width: 16px; height: var(--w); background: currentColor; border-radius: 2px; }
+.draw-w { display: block; width: 18px; height: var(--w); background: currentColor; border-radius: 2px; }
+.draw-btn[hidden], .draw-edit[hidden] { display: none; }
+/* edit box: colour, width, alert, delete; appears while a drawing is selected or being drawn */
+.draw-edit { display: inline-flex; align-items: center; gap: 2px; margin-left: 6px; padding: 2px 4px; border-radius: var(--radius);
+  background: var(--surface); box-shadow: 0 0 0 1px var(--saffron), var(--shadow-pop); animation: draw-pop var(--dur-short) var(--ease-out); }
+@keyframes draw-pop { from { opacity: 0; transform: translateY(-3px); } to { opacity: 1; transform: none; } }
 .draw-status { margin: 0; font-size: 12px; color: var(--ink-3); min-height: 1.3em; }
 .draw-text { position: absolute; z-index: 5; min-width: 160px; max-width: 320px; font: 500 15px/1.25 var(--body); background: var(--surface);
   border: 1px solid var(--saffron); border-radius: var(--radius); padding: 4px 8px; resize: none; box-shadow: var(--shadow-pop); }
@@ -722,3 +727,24 @@ body.chart-max { overflow: hidden; }
 .al-foot { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--grid); }
 .drawer-body ol { padding-left: 20px; line-height: 1.55; }
 .drawer-body code { font-size: 12px; background: var(--surface-2); padding: 1px 5px; border-radius: 3px; }
+
+/* ---------- Fundamentals table over the chart ---------- */
+.fund-ov { position: absolute; z-index: 2; pointer-events: none; font: 400 11px/1.25 var(--body); color: var(--ink);
+  background: color-mix(in srgb, var(--surface) 88%, transparent); border: 1px solid var(--grid); border-radius: var(--radius); overflow: hidden; }
+.fund-ov[hidden] { display: none; }
+.fo-head { display: flex; align-items: center; gap: 4px; padding: 3px 8px 3px 2px; border-bottom: 1px solid var(--grid); color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fo-toggle { pointer-events: auto; appearance: none; border: 0; background: none; color: var(--ink-2); cursor: pointer; width: 20px; height: 18px; padding: 0; font-size: 11px; border-radius: 3px; }
+.fo-toggle:hover { background: var(--row-hover); color: var(--ink); }
+.fund-ov table { border-collapse: collapse; width: auto; font-size: 11px; }
+.fund-ov th, .fund-ov td { padding: 2px 7px; border: 1px solid var(--grid); text-align: right; white-space: nowrap; font-weight: 400; }
+.fund-ov tr > :first-child { text-align: left; }
+.fund-ov th { color: var(--ink-3); }
+.fund-ov td { color: var(--ink); font-variant-numeric: tabular-nums; }
+.fund-ov .fo-cols th { color: var(--ink-2); text-align: center; background: var(--surface-2); }
+.fund-ov .fo-kv td { font-weight: 500; }
+.fund-ov td.pos { color: var(--up); }
+.fund-ov td.neg { color: var(--down); }
+.fund-ov td.na { color: var(--ink-3); }
+.fund-ov tr > :empty { padding: 0; border: 0; }
+.fo-note { margin: 0; padding: 3px 8px; color: var(--ink-3); }
+@media (max-width: 720px) { .fund-ov { display: none; } }

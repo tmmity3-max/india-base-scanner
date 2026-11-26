@@ -356,6 +356,13 @@ def test_quarter_summary():
     assert q["sales_qoq"] == 25.0 and q["sales_yoy"] == 60.0      # vs 160 and vs 125
     assert q["pat_qoq"] == 50.0 and q["pat_yoy"] == 200.0
     assert q["opm_qoq"] == 5.0 and q["opm_yoy"] == 9.0            # 25% vs 20% and vs 16%
+    rows = q["rows"]                                               # newest first, up to five
+    assert [r["q"] for r in rows] == ["Sep-26", "Jun-26", "Mar-26", "Dec-25", "Sep-25"]
+    assert rows[0]["sales_yoy"] == 60.0 and rows[0]["opm"] == 25.0 and rows[1]["sales_yoy"] is None
+    assert rows[0]["eps"] is None                                  # no EPS row in this statement
+    stmt.loc["Diluted EPS"] = [6.0, 4.0, 3.6, 3.4, 2.0]
+    assert ibs.quarter_summary(stmt)["rows"][0]["eps_yoy"] == 200.0
+    stmt = stmt.drop("Diluted EPS")
     short = ibs.quarter_summary(stmt.iloc[:, :2])                  # no year-ago quarter
     assert short["sales_yoy"] is None and short["opm_qoq"] == 5.0
     assert ibs.quarter_summary(None) == {} and ibs.quarter_summary(pd.DataFrame()) == {}

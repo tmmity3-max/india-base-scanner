@@ -487,6 +487,26 @@ def quarter_summary(stmt) -> dict:
            "sales_qoq": growth(s0, val(sales, prev)), "sales_yoy": growth(s0, val(sales, ago)),
            "pat_qoq": growth(p0, val(pat, prev)), "pat_yoy": growth(p0, val(pat, ago)),
            "opm_qoq": pts(m0, opm(prev)), "opm_yoy": pts(m0, opm(ago))}
+
+    # the last five quarters, newest first, for the table on the chart:
+    # EPS and sales with their change on the same quarter a year earlier, and OPM
+    eps = row("Diluted EPS", "Basic EPS")
+
+    def year_ago(c):
+        return next((x for x in cols if abs((x - (c - pd.DateOffset(years=1))).days) <= 20), None)
+
+    def r1(v, d=1):
+        return round(v, d) if v is not None else None
+
+    rows = []
+    for c in cols[:5]:
+        a = year_ago(c)
+        e, s, p, m = val(eps, c), val(sales, c), val(pat, c), opm(c)
+        rows.append({"q": c.strftime("%b-%y"), "eps": r1(e, 2), "eps_yoy": growth(e, val(eps, a)),
+                     "sales_cr": r1(s / 1e7 if s is not None else None),
+                     "sales_yoy": growth(s, val(sales, a)),
+                     "pat_cr": r1(p / 1e7 if p is not None else None), "opm": r1(m)})
+    out["rows"] = rows
     return out
 
 
@@ -536,6 +556,9 @@ def fetch_fundamentals(symbols: Iterable[str], suffix: str = ".NS", workers: int
                     out["dividend_yield"] = round(rate / price * 100, 2)
                 if isinstance(out.get("market_cap"), (int, float)):
                     out["market_cap_cr"] = round(out["market_cap"] / 1e7, 0)
+                fl, so = info.get("floatShares"), info.get("sharesOutstanding")
+                if isinstance(fl, (int, float)) and isinstance(so, (int, float)) and so > 0 and 0 < fl <= so * 1.02:
+                    out["float_pct"] = round(min(fl / so * 100, 100), 1)   # free float, % of shares
                 return sym, out
             except Exception:
                 time.sleep(1.5 * (attempt + 1))
