@@ -1026,8 +1026,23 @@
     else if (window.ibsRestoreChartHeight) window.ibsRestoreChartHeight();
     requestAnimationFrame(() => { mainChart.draw(); syncHeights(); });
     if (on) $("chart").focus({ preventScroll: true });
+    // opened from a card in the charts-only view: go back to the grid where it was
+    if (!on && gridReturn) {
+      const { y } = gridReturn; gridReturn = null;
+      panel.classList.remove("open");
+      setView("charts");
+      requestAnimationFrame(() => window.scrollTo({ top: y }));
+    }
+  }
+  let gridReturn = null;
+  function openFullFromGrid(sym) {
+    gridReturn = { y: window.scrollY };
+    setView("table");
+    openStock(sym, true);
+    setMax(true);
   }
   $("maxBtn").addEventListener("click", () => setMax(!$("chartPanel").classList.contains("max")));
+  $("maxClose").addEventListener("click", () => setMax(false));
   $("alertHere").addEventListener("click", () => { if (state.symbol) openAlertForm(state.symbol, null); });
   document.addEventListener("keydown", (e) => {
     const tg = e.target;
@@ -1727,9 +1742,11 @@
             <button type="button" data-act="out" aria-label="Zoom out">−</button>
             <button type="button" data-act="in" aria-label="Zoom in">+</button>
             <button type="button" data-act="reset">Reset</button>
+            <button type="button" class="card-max" data-act="max" title="Full-size chart with drawing tools" aria-label="Full-size chart of ${r.symbol}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/></svg></button>
           </div>
           <button type="button" class="card-open">Open with table</button>
         </div>`;
+      card.querySelector('[data-act="max"]').addEventListener("click", () => openFullFromGrid(r.symbol));
       card.querySelector(".card-open").addEventListener("click", () => { setView("table"); openStock(r.symbol, true); window.scrollTo({ top: $("tools").offsetTop - 12 }); });
       frag.appendChild(card);
       gridObserver.observe(card);

@@ -666,6 +666,18 @@ body.chart-max { overflow: hidden; }
 .chart-panel.max #chart { flex: 1 1 auto; height: auto !important; min-height: 0; }
 .chart-panel.max .chart-resize, .chart-panel.max .hint, .chart-panel.max .fund, .chart-panel.max .ich-info { display: none !important; }
 .chart-panel.max .chart-sub { min-height: 0; }
+.max-close { display: none; }
+.chart-panel.max .max-close {
+  display: inline-flex; align-items: center; justify-content: center; position: absolute; top: 10px; right: 14px; z-index: 3;
+  width: 36px; height: 36px; padding: 0; font-size: 16px; line-height: 1; cursor: pointer;
+  color: var(--ink); background: var(--surface); border: 1px solid var(--rule-2); border-radius: var(--radius-pill);
+  transition: background var(--dur-micro) var(--ease-out), border-color var(--dur-micro) var(--ease-out);
+}
+.chart-panel.max .max-close:hover { background: var(--row-hover); border-color: var(--ink-3); }
+.chart-panel.max .chart-head { padding-right: 52px; }
+.chart-panel.max .close { display: none; }
+.card-tools .zoom .card-max { width: 30px; padding: 4px 0; display: inline-flex; align-items: center; justify-content: center; }
+.card-tools .zoom .card-max svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .chart-panel.max .legend { margin-top: 4px; }
 
 /* ---------- Alerts drawer ---------- */

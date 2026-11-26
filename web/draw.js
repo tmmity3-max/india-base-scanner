@@ -28,7 +28,7 @@
     ["channel", "Parallel channel", "C", "channel", '<path d="M3 15L15 3M9 21L21 9"/>'],
     ["fib", "Fibonacci retracement", "F", "two", '<path d="M3 4h18M3 9h18M3 13.5h18M3 20h18"/>'],
     ["path", "Path (click each point, double-click to finish)", "P", "path", '<path d="M3 18l5-8 5 5 8-11"/><circle cx="3" cy="18" r="1.4"/><circle cx="21" cy="4" r="1.4"/>'],
-    ["brush", "Brush", "B", "brush", '<path d="M3 18c3 0 3.5-5 6.5-5s3 3.5 6 3.5S19 10 21 7"/>'],
+    ["brush", "Brush", "B", "brush", '<path d="M21 3l-8.6 8.6"/><path d="M12.4 11.6c-1.6-.5-3.3.2-3.9 1.8-.6 1.5-.1 2.9-2.5 4.1 3 1.2 6.4.4 7.6-1.8.7-1.3.3-2.8-1.2-4.1z"/><path d="M3 21c1.6-.9 3.1-1 4.6-.4"/>'],
     ["text", "Text", "X", "text", '<path d="M5 5h14M12 5v15M9 20h6"/>'],
     ["ruler", "Ruler: measure price, % and time (or Shift + drag)", "M", "two", '<path d="M3 16L16 3l5 5L8 21z"/><path d="M7 12l2 2M10 9l2 2M13 6l2 2"/>'],
   ];
@@ -93,7 +93,8 @@
 
   // ---------- drawing one item ----------
   function drawItem(ctx, g, cv, it, selected, ghost) {
-    const P = screenPts(it, cv), col = colorOf(it.color), w = it.width || 2;
+    const P = screenPts(it, cv), col = colorOf(it.color);
+    const w = it.type === "brush" ? (it.width || 2) * 2 + 1 : it.width || 2;   // brush strokes are drawn thicker
     ctx.save();
     ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineWidth = w; ctx.lineCap = "round"; ctx.lineJoin = "round";
     if (ghost) ctx.globalAlpha = 0.85;
