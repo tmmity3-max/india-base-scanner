@@ -80,6 +80,7 @@ Two more scripts sit next to it:
 
 - [`pine/base_breakout_pro.pine`](pine/base_breakout_pro.pine): the Base Breakout screen as an indicator. Base boxes numbered B1, B2, …, a pivot line, breakout / squat / failed-poke markers on closed bars only, a volume pane with relative volume and HVY / HVQ tags, an Ichimoku cloud, and ATR and fundamentals tables.
 - [`pine/rs_line.pine`](pine/rs_line.pine): the RS line in its own pane against NIFTY 50, NIFTY 500, Smallcap 250, Midcap 150 or any symbol.
+- [`pine/momentum_breakout_swing.pine`](pine/momentum_breakout_swing.pine): **52W Momentum Breakout**, a complete swing / positional system and the best of about 2,700 entry, filter and exit combinations backtested on Nifty Midcap 150 + Smallcap 250 stocks, 2011–2026. Buy on the first close above the 52-week high when the stock passes the trend template and the NIFTY 500 is above its 200-day SMA; enter at the next open; stop 3 ATR below; exit on a close below the highest high since entry minus 5 ATR. Signals and exits only on closed bars (non-repainting), with a dashboard (state, stop, trail, shares for your risk %) and alerts. Chosen on 2011–2019 and checked on 2020–2026: profit factor 2.7 and 3.0, about 40% winners, trades of 2–3 months. The research, its limits (today's index members only, so survivorship bias) and the scripts to rerun it are in [`research/`](research/).
 
 **To add it to TradingView:**
 1. Open [the file](pine/murphy_trend_following.pine), click **Raw**, and copy everything. You can also use the *Copy code* button on the website's Murphy screen.

@@ -5,3 +5,7 @@ __pycache__/
 .venv/
 web/data/
 out/
+research/data/
+research/results/trades_*.csv
+research/results/final_trades.csv
+research/results/equity_max*.csv

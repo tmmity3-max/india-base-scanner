@@ -1,0 +1,26 @@
+entry,filters,exit,is_n,is_win,is_pf,is_eR,is_pos_years,is_worst_year_R,oos_n,oos_win,oos_pf,oos_eR,oos_avg,oos_days
+52w high breakout,trend template + Nifty500 > 200 SMA,50 SMA close,1358,35.1,1.93,0.537,6,-0.437,2300,32.9,1.92,0.572,4.2,31.1
+50d high breakout,trend template + Nifty500 > 200 SMA,50 SMA close,1548,34.3,1.88,0.498,6,-0.528,2643,32.1,1.91,0.572,4.14,30.4
+52w high breakout,Nifty500 > 200 SMA + +DI > -DI,50 SMA close,1560,34.4,1.83,0.492,6,-0.502,2595,33.4,1.98,0.598,4.41,31.6
+52w high breakout,Nifty500 > 200 SMA + within 15% of 52w high,50 SMA close,1562,34.4,1.83,0.491,6,-0.502,2596,33.4,1.98,0.597,4.41,31.6
+52w high breakout,Nifty500 > 200 SMA,50 SMA close,1562,34.4,1.83,0.491,6,-0.502,2596,33.4,1.98,0.597,4.41,31.6
+50d high breakout,trend template + within 15% of 52w high,50 SMA close,1675,34.2,1.79,0.464,6,-0.642,2753,32.6,1.98,0.597,4.4,30.9
+52w high breakout,RS line >= 50d avg + Nifty500 > 200 SMA,50 SMA close,1562,34.3,1.8,0.477,6,-0.504,2580,33.4,1.98,0.596,4.41,31.6
+50d high breakout,trend template,50 SMA close,1688,34.2,1.79,0.46,6,-0.653,2805,32.3,1.96,0.585,4.34,30.7
+50d high breakout,trend template + +DI > -DI,50 SMA close,1685,34.2,1.79,0.46,6,-0.653,2804,32.3,1.96,0.586,4.34,30.7
+50d high breakout,trend template + RS line >= 50d avg,50 SMA close,1682,34.1,1.76,0.449,6,-0.653,2774,32.2,1.96,0.588,4.37,30.7
+50d high breakout,trend template + ext <= 5 ATR,50 SMA close,1452,34.5,1.82,0.466,6,-0.741,2430,31.5,1.88,0.533,3.94,30.4
+52w high breakout,Nifty500 > 200 SMA + close top 1/3 of day,50 SMA close,1378,33.7,1.8,0.481,6,-0.522,2324,33.0,1.97,0.598,4.4,31.4
+ATR entry (green dot),trend template + within 15% of 52w high,50 SMA close,2183,33.7,1.78,0.401,6,-0.628,3426,33.3,2.2,0.627,4.81,30.2
+20d high breakout,trend template + within 15% of 52w high,50 SMA close,2199,32.5,1.72,0.405,6,-0.605,3441,31.5,2.02,0.588,4.31,29.8
+ATR entry (green dot),trend template + RS line >= 50d avg,50 SMA close,2234,33.4,1.76,0.393,6,-0.594,3592,32.8,2.14,0.605,4.65,29.7
+ATR entry (green dot),trend template,50 SMA close,2234,33.4,1.76,0.393,6,-0.594,3592,32.8,2.14,0.605,4.65,29.7
+ATR entry (green dot),trend template + +DI > -DI,50 SMA close,2234,33.4,1.76,0.393,6,-0.594,3592,32.8,2.14,0.605,4.65,29.7
+20d high breakout,trend template + RS line >= 50d avg,50 SMA close,2138,32.8,1.71,0.401,6,-0.529,3399,30.7,1.95,0.554,4.16,29.7
+50d high breakout,trend template + close top 1/3 of day,50 SMA close,1485,33.4,1.76,0.45,6,-0.64,2490,32.6,1.99,0.606,4.52,30.9
+"Base breakout 20-60d, depth<=25%",trend template,50 SMA close,1553,34.4,1.74,0.445,6,-0.631,2564,32.3,1.94,0.574,4.04,30.7
+"Base breakout 20-60d, depth<=25%",trend template + within 15% of 52w high,50 SMA close,1531,34.6,1.74,0.447,6,-0.631,2503,32.4,1.96,0.587,4.12,30.9
+"Base breakout 20-60d, depth<=25%",trend template + +DI > -DI,50 SMA close,1550,34.3,1.73,0.444,6,-0.631,2561,32.3,1.94,0.575,4.05,30.7
+"Tight base breakout 15d, depth<=12%",trend template + within 15% of 52w high,50 SMA close,1873,32.5,1.77,0.394,6,-0.61,2755,30.6,1.95,0.566,3.63,28.0
+20d high breakout,trend template,50 SMA close,2269,31.9,1.7,0.389,6,-0.55,3620,30.9,1.98,0.564,4.16,29.2
+20d high breakout,trend template + ext <= 5 ATR,50 SMA close,2073,31.9,1.7,0.387,6,-0.608,3359,30.4,1.97,0.542,4.02,29.0

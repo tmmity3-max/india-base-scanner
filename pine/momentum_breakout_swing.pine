@@ -1,0 +1,175 @@
+// This Pine Script® code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+//@version=6
+// =============================================================================
+// 52W Momentum Breakout · Swing / Positional (Non-Repainting)
+//
+// The rule that came out on top of a search of ~2,700 entry / filter / exit
+// combinations on Nifty Midcap 150 + Smallcap 250 stocks, daily bars, 2011-2026
+// (chosen on 2011-2019, checked on 2020-2026; see research/ in the repo):
+//
+//   BUY   on the close of the FIRST day the stock closes above its highest high
+//         of the previous 52 weeks (252 bars), when
+//           - trend template: close > SMA50 > SMA150 > SMA200, SMA200 rising (vs 20 bars ago)
+//           - market: NIFTY 500 above its 200-day SMA
+//           - liquid: price >= 50 and 50-day average turnover >= 1 crore
+//         Entry is the NEXT bar's open.
+//   STOP  3 x ATR(14) below the entry (fixed).
+//   EXIT  a close below the trailing line = highest high since entry - 5 x ATR(14)
+//         (never below the stop), from the second day in the trade.
+//   One trade at a time; signals while in a trade are ignored.
+//
+// Non-repainting: signals, entries and exits are only decided on CLOSED bars.
+// Nothing appears intrabar and nothing is moved afterwards. The NIFTY 500 filter
+// uses the index's own bar of the same date (no lookahead).
+// Built for DAILY charts of NSE stocks; other timeframes were not tested.
+// =============================================================================
+indicator("52W Momentum Breakout · Swing (Non-Repainting)", shorttitle="52W MB", overlay=true, max_labels_count=500, max_lines_count=500)
+
+// ─── INPUTS (defaults = the tested rule) ─────────────────────────────────────
+gE = "Entry"
+hiLen = input.int(252, "Breakout lookback (bars, 252 = 52 weeks)", minval=20, group=gE)
+useTT = input.bool(true, "Trend template (close > 50 > 150 > 200 SMA, 200 rising)", group=gE)
+useMkt = input.bool(true, "Market filter: index above its 200-day SMA", group=gE)
+mktSym = input.symbol("NSE:CNX500", "Market index", group=gE)
+useLiq = input.bool(true, "Liquidity: price >= 50, 50-day turnover >= 1 Cr", group=gE)
+minPrice = input.float(50, "Min price", minval=0, group=gE)
+minTurnCr = input.float(1.0, "Min 50-day avg turnover (Cr)", minval=0, step=0.5, group=gE)
+
+gX = "Stop and exit"
+atrLen = input.int(14, "ATR length", minval=1, group=gX)
+stopMult = input.float(3.0, "Initial stop (x ATR below entry)", minval=0.5, step=0.5, group=gX)
+trailMult = input.float(5.0, "Trailing exit (x ATR below highest high since entry)", minval=1.0, step=0.5, group=gX)
+
+gR = "Position size"
+capital = input.float(1000000, "Capital (Rs)", minval=0, step=10000, group=gR)
+riskPct = input.float(1.0, "Risk per trade (% of capital)", minval=0.1, step=0.1, group=gR, tooltip="Shares = capital x risk % / (entry - stop). The research portfolio risked 1% per trade with at most 10 open positions and at most 20% of capital in one stock.")
+maxAllocPct = input.float(20.0, "Max position (% of capital)", minval=1, step=1, group=gR)
+
+gV = "Display"
+showTrail = input.bool(true, "Show stop and trailing line", group=gV)
+showPast = input.bool(true, "Show past trades with their result", group=gV)
+showTT = input.bool(false, "Show SMA 50 / 150 / 200", group=gV)
+showDash = input.bool(true, "Show dashboard", group=gV)
+dashPos = input.string("Top Right", "Dashboard position", options=["Top Left", "Top Right", "Bottom Left", "Bottom Right"], group=gV)
+
+// ─── SERIES ──────────────────────────────────────────────────────────────────
+float sma50 = ta.sma(close, 50)
+float sma150 = ta.sma(close, 150)
+float sma200 = ta.sma(close, 200)
+float atr = ta.atr(atrLen)
+float turnCr = ta.sma(close * volume, 50) / 1e7
+float prevHi = ta.highest(high, hiLen)[1]
+
+bool brk = not na(prevHi) and close > prevHi
+bool brkFirst = brk and not brk[1]                     // first close of a run above the 52-week high
+bool tt = close > sma50 and sma50 > sma150 and sma150 > sma200 and sma200 > sma200[20]
+bool mktOk = request.security(mktSym, timeframe.period, close > ta.sma(close, 200), lookahead=barmerge.lookahead_off, ignore_invalid_symbol=true)
+bool liqOk = close >= minPrice and turnCr >= minTurnCr
+bool setup = brkFirst and (not useTT or tt) and (not useMkt or mktOk) and (not useLiq or liqOk)
+
+// ─── TRADE STATE (advanced on closed bars only) ──────────────────────────────
+var bool inPos = false
+var bool pending = false
+var float sigAtr = na
+var float entryPx = na
+var float stopPx = na
+var float hhSince = na
+var float trailPx = na
+var int entryBar = na
+var int exitBar = -1
+var int nT = 0
+var int nW = 0
+var float sumRet = 0.0
+var float grossW = 0.0
+var float grossL = 0.0
+
+bool buySig = false
+bool exitSig = false
+float exitPx = na
+string exitWhy = ""
+
+if barstate.isconfirmed
+    // 1) the entry: the bar after a signal opens the trade at its open
+    if pending
+        pending := false
+        inPos := true
+        entryPx := open
+        stopPx := entryPx - stopMult * sigAtr
+        hhSince := high
+        entryBar := bar_index
+        trailPx := stopPx
+        if low <= stopPx                                    // stopped on the entry day
+            exitSig := true
+            exitPx := stopPx
+            exitWhy := "stop"
+    else if inPos
+        // 2) managing an open trade
+        hhSince := math.max(hhSince, high)
+        trailPx := math.max(hhSince - trailMult * atr, stopPx)
+        if low <= stopPx
+            exitSig := true
+            exitPx := math.min(open, stopPx)
+            exitWhy := "stop"
+        else if close < trailPx
+            exitSig := true
+            exitPx := close
+            exitWhy := "trail"
+    if exitSig
+        float r = exitPx / entryPx - 1
+        nT += 1
+        nW += r > 0 ? 1 : 0
+        sumRet += r
+        grossW += r > 0 ? r : 0
+        grossL += r <= 0 ? -r : 0
+        inPos := false
+        exitBar := bar_index
+        if showPast
+            label.new(bar_index, high, (r >= 0 ? "+" : "") + str.tostring(r * 100, "0.0") + "%\n" + exitWhy, style=label.style_label_down,
+                 color=r >= 0 ? color.new(#1F9D55, 15) : color.new(#D64541, 15), textcolor=color.white, size=size.small)
+    // 3) a new signal (not while in a trade, not on the bar a trade closed)
+    if setup and not inPos and not pending and bar_index > exitBar
+        buySig := true
+        pending := true
+        sigAtr := atr
+
+// ─── PLOTS ───────────────────────────────────────────────────────────────────
+plotshape(buySig, "Buy signal (enter next open)", shape.triangleup, location.belowbar, color.new(#1F9D55, 0), size=size.small, text="BUY", textcolor=color.new(#1F9D55, 0))
+plot(showTrail and inPos ? trailPx : na, "Trailing exit", color=color.new(#FF9800, 0), style=plot.style_linebr, linewidth=2)
+plot(showTrail and inPos ? stopPx : na, "Initial stop", color=color.new(#D64541, 40), style=plot.style_linebr, linewidth=1)
+plot(showTrail and inPos ? entryPx : na, "Entry", color=color.new(#2962FF, 50), style=plot.style_linebr, linewidth=1)
+plot(showTT ? sma50 : na, "SMA 50", color=color.new(#2962FF, 30))
+plot(showTT ? sma150 : na, "SMA 150", color=color.new(#FF9800, 30))
+plot(showTT ? sma200 : na, "SMA 200", color=color.new(#9C27B0, 30))
+bgcolor(useMkt and not mktOk ? color.new(#787B86, 93) : na, title="Market filter off (index below 200 SMA)")
+
+// ─── ALERTS (bar close) ──────────────────────────────────────────────────────
+alertcondition(buySig, "52W MB: Buy signal", "{{ticker}}: 52-week momentum breakout. Enter at the next open; stop 3 ATR below the entry.")
+alertcondition(exitSig, "52W MB: Exit", "{{ticker}}: exit signal (stop or close below the 5-ATR trailing line).")
+if buySig
+    alert(syminfo.ticker + ": 52W momentum breakout at " + str.tostring(close, format.mintick) + ". Enter next open, stop about " + str.tostring(close - stopMult * atr, format.mintick), alert.freq_once_per_bar_close)
+if exitSig
+    alert(syminfo.ticker + ": exit (" + exitWhy + ") at " + str.tostring(exitPx, format.mintick), alert.freq_once_per_bar_close)
+
+// ─── DASHBOARD ───────────────────────────────────────────────────────────────
+pBg = color.new(#2B2F36, 5)
+pTxt = #E7EAEE
+pMut = #A9B0B9
+tPos = dashPos == "Top Left" ? position.top_left : dashPos == "Top Right" ? position.top_right : dashPos == "Bottom Left" ? position.bottom_left : position.bottom_right
+var table dash = table.new(tPos, 2, 8, bgcolor=pBg, frame_color=color.new(#6E7781, 40), frame_width=1, border_color=color.new(#535C66, 60), border_width=1)
+dCell(int r, string k, string v, color vc) =>
+    table.cell(dash, 0, r, k, text_color=pMut, text_size=size.small, text_halign=text.align_left)
+    table.cell(dash, 1, r, v, text_color=vc, text_size=size.small, text_halign=text.align_left)
+
+if showDash and barstate.islast
+    float riskPS = inPos ? entryPx - stopPx : pending ? stopMult * sigAtr : stopMult * atr
+    float qty = riskPS > 0 ? math.floor(math.min(capital * riskPct / 100 / riskPS, capital * maxAllocPct / 100 / close)) : na
+    string state = inPos ? "In trade since " + str.format_time(time[bar_index - entryBar], "dd MMM yyyy", "Asia/Kolkata") : pending ? "BUY at next open" : setup ? "Signal" : "Waiting"
+    table.cell(dash, 0, 0, "52W MOMENTUM BREAKOUT", text_color=pTxt, text_size=size.small, text_halign=text.align_left)
+    table.cell(dash, 1, 0, timeframe.isdaily ? "daily" : "use DAILY chart", text_color=timeframe.isdaily ? pMut : color.orange, text_size=size.small)
+    dCell(1, "State", state, inPos or pending ? #1F9D55 : pTxt)
+    dCell(2, "Open P&L", inPos ? str.tostring((close / entryPx - 1) * 100, "+0.0;-0.0") + "%" : "–", inPos ? (close >= entryPx ? #1F9D55 : #D64541) : pMut)
+    dCell(3, "Stop / trail", inPos ? str.tostring(stopPx, format.mintick) + " / " + str.tostring(trailPx, format.mintick) : "–", pTxt)
+    dCell(4, "Shares at " + str.tostring(riskPct, "0.0") + "% risk", na(qty) ? "–" : str.tostring(qty, "#"), pTxt)
+    dCell(5, "Market filter", mktOk ? "ON (index > 200 SMA)" : "OFF", mktOk ? #1F9D55 : color.orange)
+    dCell(6, "Trades on this chart", str.tostring(nT) + (nT > 0 ? "  ·  " + str.tostring(100.0 * nW / nT, "0") + "% win" : ""), pTxt)
+    dCell(7, "Avg / profit factor", nT > 0 ? str.tostring(sumRet / nT * 100, "+0.0;-0.0") + "%  ·  " + (grossL > 0 ? str.tostring(grossW / grossL, "0.00") : "–") : "–", pTxt)
