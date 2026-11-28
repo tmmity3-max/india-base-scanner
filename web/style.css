@@ -748,3 +748,24 @@ body.chart-max { overflow: hidden; }
 .fund-ov tr > :empty { padding: 0; border: 0; }
 .fo-note { margin: 0; padding: 3px 8px; color: var(--ink-3); }
 @media (max-width: 720px) { .fund-ov { display: none; } }
+
+/* ---------- Stock view: a searched stock on its own (chart and details, no screens or table) ---------- */
+.back-scans { display: none; }
+body.stock-view .intro, body.stock-view #screens, body.stock-view #screenNote, body.stock-view #stages,
+body.stock-view #tools, body.stock-view #empty, body.stock-view .list, body.stock-view #splitter,
+body.stock-view #grid, body.stock-view .grid-hint, body.stock-view #pineGift, body.stock-view .how { display: none !important; }
+body.stock-view .workspace { grid-template-columns: minmax(0, 1fr) !important; margin-top: 8px; }
+body.stock-view .chart-panel:not(.max) {
+  position: relative; top: auto; inset: auto; z-index: auto; transform: none; max-height: none;
+  height: auto !important; overflow: visible !important; box-shadow: none; border-radius: 0; transition: none;
+}
+body.stock-view .chart-panel:not(.max) #chart { height: clamp(460px, calc(100vh - 300px), 900px) !important; }
+body.stock-view .chart-panel .close { display: none; }
+body.stock-view .back-scans {
+  display: inline-flex; align-items: center; gap: 6px; margin: 0 0 12px; padding: 0 14px; min-height: 32px;
+  font: 400 13px/1 var(--body); color: var(--ink); background: transparent; cursor: pointer;
+  border: 1px solid var(--rule-2); border-radius: var(--radius-pill);
+  transition: border-color var(--dur-micro) var(--ease-out), background var(--dur-micro) var(--ease-out);
+}
+body.stock-view .back-scans:hover { border-color: var(--ink-3); background: var(--row-hover); }
+body.stock-view .chart-panel.max .back-scans { display: none; }

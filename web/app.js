@@ -195,8 +195,14 @@
     if (p.get("screen") && SCREENS[p.get("screen")]) state.screen = p.get("screen");
     if (p.get("stock")) state.symbol = p.get("stock").toUpperCase();
     if (p.get("view") === "charts") state.view = "charts";
+    // #stock=SYM&view=stock (a searched stock), or a bare #stock=SYM (alert links)
+    state.wantStockView = !!state.symbol && (p.get("view") === "stock" || !p.get("screen"));
   }
   function writeHash() {
+    if (state.stockView && state.symbol) {
+      history.replaceState(null, "", "#" + new URLSearchParams({ stock: state.symbol, view: "stock", screen: state.screen }).toString());
+      return;
+    }
     const p = new URLSearchParams({ screen: state.screen });
     if (state.view === "charts") p.set("view", "charts");
     else if (state.symbol) p.set("stock", state.symbol);
@@ -1048,6 +1054,7 @@
     const tg = e.target;
     const typing = tg && (tg.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(tg.tagName));
     if (e.key === "Escape" && $("chartPanel").classList.contains("max")) { setMax(false); e.stopImmediatePropagation(); return; }
+    if (e.key === "Escape" && state.stockView && !typing) { exitStockView(); e.stopImmediatePropagation(); return; }
     if (typing || e.ctrlKey || e.metaKey || e.altKey) return;
     if ((e.key === "f" || e.key === "F") && state.symbol && state.view === "table" && mainChart.c) { e.preventDefault(); setMax(!$("chartPanel").classList.contains("max")); }
     if (e.key === "/" && $("gsInput")) { e.preventDefault(); $("gsInput").focus(); }
@@ -1146,19 +1153,38 @@
   })();
   // open a stock from the search box (or an alert): its chart in the panel, on
   // a screen it is listed on when the current one doesn't have it
+  // A stock opened from the search box (or an alert link) gets a page of its
+  // own: the chart and its details at full width, without the screens, stages
+  // and table. "Back to scans" (or Esc) returns to the screen you were on.
   function openAny(sym) {
-    if (!state.data) return;
+    if (!state.data || !sym) return;
     if (state.view !== "table") setView("table");
-    const on = screensOf(sym);
-    if (on.length && !on.includes(state.screen)) selectScreen(on[0]);
-    const def = STAGES[state.screen];
-    const row = (state.data.screens[state.screen] || []).find((r) => r.symbol === sym);
-    if (row && def && def.of(row) !== state.stage) selectStage(def.of(row));
-    openStock(sym, true);
-    const panel = $("chartPanel");
-    if (window.matchMedia("(min-width: 1081px)").matches) window.scrollTo({ top: Math.max(0, $("tools").offsetTop - 12), behavior: "smooth" });
-    panel.classList.add("open");
+    if (!state.stockView) state.returnTo = { symbol: state.symbol, y: window.scrollY };
+    state.stockView = true;
+    document.body.classList.add("stock-view");
+    $("chartPanel").classList.add("open");
+    openStock(sym.toUpperCase(), true);
+    window.scrollTo({ top: 0 });
+    requestAnimationFrame(() => { mainChart.draw(); placeFundOv(); });
   }
+  function exitStockView() {
+    if (!state.stockView) return;
+    setMax(false);
+    state.stockView = false;
+    document.body.classList.remove("stock-view");
+    if (window.ibsRestoreChartHeight) window.ibsRestoreChartHeight();
+    const back = state.returnTo || {};
+    state.returnTo = null;
+    // back to the screen as it was: its stage, its table, the stock you had open
+    const rows = currentRows();
+    const sym = back.symbol && rows.some((r) => r.symbol === back.symbol) ? back.symbol : rows[0] && rows[0].symbol;
+    refreshList();
+    if (sym && window.matchMedia("(min-width: 1081px)").matches) openStock(sym, false);
+    else { $("chartPanel").classList.remove("open"); if (!sym) clearChart(); }
+    writeHash();
+    requestAnimationFrame(() => { syncHeights(); window.scrollTo({ top: back.y || 0 }); });
+  }
+  $("backToScans").addEventListener("click", exitStockView);
   window.ibsOpenStock = openAny;
 
   async function init() {
@@ -1184,7 +1210,9 @@
 
     renderScreens();
     setView(state.view, true);
+    const linked = state.symbol;
     selectScreen(state.screen, true);
+    if (state.wantStockView && linked) openAny(linked);
 
     $("search").addEventListener("input", (e) => { state.query = e.target.value.trim().toLowerCase(); refreshList(); });
     $("closeChart").addEventListener("click", () => { setMax(false); $("chartPanel").classList.remove("open"); });
@@ -1603,8 +1631,9 @@
     $("chartMcap").innerHTML = mc != null ? `<span>Market cap</span><b>${mcapText(mc)}</b>` : "";
     renderFund(c, row);
     renderFundOv(c, row);
-    const murphy = state.screen === "Murphy";
-    const ich = state.screen === "Ichimoku";
+    const sv = state.stockView;                      // stock view: not tied to a screen's chart style
+    const murphy = !sv && state.screen === "Murphy";
+    const ich = !sv && state.screen === "Ichimoku";
     const info = ich && c.ich ? c.ich : null;
     $("ichInfo").hidden = !info;
     if (info) {
@@ -1614,7 +1643,7 @@
           `That count assumes a third is sold at each target and takes the stop first when one bar touches both. It is not a backtest.` : "");
     }
     $("sma10Legend").hidden = !(murphy && c.sma10);
-    $("ema50Legend").hidden = !(state.screen === "50 EMA Pullback" && c.ema50);
+    $("ema50Legend").hidden = !(!sv && state.screen === "50 EMA Pullback" && c.ema50);
     for (const el of document.querySelectorAll(".legend .k-ma")) el.hidden = ich;
     for (const el of document.querySelectorAll(".legend .k-ich")) el.hidden = !ich;
     mainChart.setData(c, chartOptions());
@@ -1622,6 +1651,8 @@
   // what the chart draws depends on the screen: its own key level only, and
   // bases as boxes on the Base Breakout screen or whenever "Bases" is switched on
   function chartOptions() {
+    // a searched stock isn't tied to a screen: plain moving averages, every key level it has, bases
+    if (state.stockView) return { sma10: false, ema50: false, ichimoku: false, levels: undefined, bases: true };
     const s = state.screen, lv = SCREEN_LEVEL[s];
     return { sma10: s === "Murphy", ema50: s === "50 EMA Pullback", ichimoku: s === "Ichimoku", levels: lv ? [lv] : [],
              bases: s !== "Ichimoku" && (s === "Base Breakout" || state.showBases) };
